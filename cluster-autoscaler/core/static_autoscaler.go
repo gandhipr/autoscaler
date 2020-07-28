@@ -146,11 +146,15 @@ func NewStaticAutoscaler(
 	deleteOptions options.NodeDeleteOptions,
 	drainabilityRules rules.Rules) *StaticAutoscaler {
 
+	klog.V(4).Infof("Creating new static autoscaler with opts: %v", opts)
+
 	clusterStateConfig := clusterstate.ClusterStateRegistryConfig{
 		MaxTotalUnreadyPercentage: opts.MaxTotalUnreadyPercentage,
 		OkTotalUnreadyCount:       opts.OkTotalUnreadyCount,
 	}
-	clusterStateRegistry := clusterstate.NewClusterStateRegistry(cloudProvider, clusterStateConfig, autoscalingKubeClients.LogRecorder, backoff, processors.NodeGroupConfigProcessor)
+	clusterStateRegistry := clusterstate.NewClusterStateRegistry(cloudProvider, clusterStateConfig,
+		autoscalingKubeClients.LogRecorder, backoff, processors.NodeGroupConfigProcessor)
+	
 	processorCallbacks := newStaticAutoscalerProcessorCallbacks()
 	autoscalingContext := context.NewAutoscalingContext(
 		opts,

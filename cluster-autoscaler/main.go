@@ -21,6 +21,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strconv"
@@ -43,6 +44,7 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	cloudBuilder "k8s.io/autoscaler/cluster-autoscaler/cloudprovider/builder"
 	"k8s.io/autoscaler/cluster-autoscaler/config"
+	"k8s.io/autoscaler/cluster-autoscaler/config/dynamic"
 	"k8s.io/autoscaler/cluster-autoscaler/core"
 	"k8s.io/autoscaler/cluster-autoscaler/core/podlistprocessor"
 	"k8s.io/autoscaler/cluster-autoscaler/estimator"
@@ -64,6 +66,7 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/version"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	kube_flag "k8s.io/component-base/cli/flag"
@@ -220,8 +223,7 @@ var (
 	emitPerNodeGroupMetrics            = flag.Bool("emit-per-nodegroup-metrics", false, "If true, emit per node group metrics.")
 	debuggingSnapshotEnabled           = flag.Bool("debugging-snapshot-enabled", false, "Whether the debugging snapshot of cluster autoscaler feature is enabled")
 	nodeInfoCacheExpireTime            = flag.Duration("node-info-cache-expire-time", 87600*time.Hour, "Node Info cache expire time for each item. Default value is 10 years.")
-
-	initialNodeGroupBackoffDuration = flag.Duration("initial-node-group-backoff-duration", 5*time.Minute,
+	initialNodeGroupBackoffDuration    = flag.Duration("initial-node-group-backoff-duration", 5*time.Minute,
 		"initialNodeGroupBackoffDuration is the duration of first backoff after a new node failed to start.")
 	maxNodeGroupBackoffDuration = flag.Duration("max-node-group-backoff-duration", 30*time.Minute,
 		"maxNodeGroupBackoffDuration is the maximum backoff duration for a NodeGroup after new nodes failed to start.")
@@ -250,6 +252,7 @@ var (
 			"--max-graceful-termination-sec flag should not be set when this flag is set. Not setting this flag will use unordered evictor by default."+
 			"Priority evictor reuses the concepts of drain logic in kubelet(https://github.com/kubernetes/enhancements/tree/master/keps/sig-node/2712-pod-priority-based-graceful-node-shutdown#migration-from-the-node-graceful-shutdown-feature)."+
 			"Eg. flag usage:  '10000:20,1000:100,0:60'")
+	configPath = flag.String("config-path", "", "The path for the mounted ConfigMap containing the settings used for dynamic reconfiguration. Set as empty string to use static mode.")
 )
 
 func isFlagPassed(name string) bool {
@@ -423,6 +426,35 @@ func createAutoscalingOptions() config.AutoscalingOptions {
 	}
 }
 
+func createConfigFetcherOptions() dynamic.ConfigFetcherOptions {
+	return dynamic.ConfigFetcherOptions{
+		ConfigPath: *configPath,
+	}
+}
+
+func getKubeConfig() *rest.Config {
+	if *kubeConfigFile != "" {
+		klog.V(1).Infof("Using kubeconfig file: %s", *kubeConfigFile)
+		// use the current context in kubeconfig
+		config, err := clientcmd.BuildConfigFromFlags("", *kubeConfigFile)
+		if err != nil {
+			klog.Fatalf("Failed to build config: %v", err)
+		}
+		return config
+	}
+	url, err := url.Parse(*kubernetes)
+	if err != nil {
+		klog.Fatalf("Failed to parse Kubernetes url: %v", err)
+	}
+
+	kubeConfig, err := config.GetKubeClientConfig(url)
+	if err != nil {
+		klog.Fatalf("Failed to build Kubernetes client configuration: %v", err)
+	}
+
+	return kubeConfig
+}
+
 func registerSignalHandlers(autoscaler core.Autoscaler) {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, os.Interrupt, os.Kill, syscall.SIGTERM, syscall.SIGQUIT)
@@ -469,6 +501,7 @@ func buildAutoscaler(debuggingSnapshotter debuggingsnapshot.DebuggingSnapshotter
 		PredicateChecker:     predicateChecker,
 		DeleteOptions:        deleteOptions,
 		DrainabilityRules:    drainabilityRules,
+		ConfigFetcherOptions: createConfigFetcherOptions(),
 	}
 
 	opts.Processors = ca_processors.DefaultProcessors(autoscalingOptions)

@@ -23,6 +23,7 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	cloudBuilder "k8s.io/autoscaler/cluster-autoscaler/cloudprovider/builder"
 	"k8s.io/autoscaler/cluster-autoscaler/config"
+	"k8s.io/autoscaler/cluster-autoscaler/config/dynamic"
 	"k8s.io/autoscaler/cluster-autoscaler/context"
 	"k8s.io/autoscaler/cluster-autoscaler/core/scaledown/pdb"
 	"k8s.io/autoscaler/cluster-autoscaler/core/scaleup"
@@ -43,6 +44,7 @@ import (
 
 // AutoscalerOptions is the whole set of options for configuring an autoscaler
 type AutoscalerOptions struct {
+	dynamic.ConfigFetcherOptions
 	config.AutoscalingOptions
 	KubeClient             kube_client.Interface
 	InformerFactory        informers.SharedInformerFactory
@@ -78,7 +80,8 @@ func NewAutoscaler(opts AutoscalerOptions, informerFactory informers.SharedInfor
 	if err != nil {
 		return nil, errors.ToAutoscalerError(errors.InternalError, err)
 	}
-	return NewStaticAutoscaler(
+
+	autoscalerBuilder := NewAutoscalerBuilder(
 		opts.AutoscalingOptions,
 		opts.PredicateChecker,
 		opts.ClusterSnapshot,
@@ -92,8 +95,14 @@ func NewAutoscaler(opts AutoscalerOptions, informerFactory informers.SharedInfor
 		opts.RemainingPdbTracker,
 		opts.ScaleUpOrchestrator,
 		opts.DeleteOptions,
-		opts.DrainabilityRules,
-	), nil
+		opts.DrainabilityRules)
+
+	if opts.ConfigPath != "" {
+		configFetcher := dynamic.NewConfigFetcher(opts.ConfigFetcherOptions)
+		return NewDynamicAutoscaler(autoscalerBuilder, configFetcher)
+	}
+
+	return autoscalerBuilder.Build()
 }
 
 // Initialize default options if not provided.

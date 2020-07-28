@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"strings"
 	"testing"
 )
 
@@ -96,6 +97,46 @@ func TestExtractTaintsFromScaleSet(t *testing.T) {
 	}
 
 	taints := extractTaintsFromScaleSet(tags)
+	assert.Len(t, taints, 4)
+	assert.Equal(t, makeTaintSet(expectedTaints), makeTaintSet(taints))
+}
+
+
+func TestExtractTaintsFromSpecString(t *testing.T) {
+	taintsString := []string{
+		"dedicated=foo:NoSchedule",
+		"group=bar:NoExecute",
+		"app=fizz:PreferNoSchedule",
+		"k8s.io/testing/underscore/to/slash=fizz:PreferNoSchedule",
+		"bar=baz",
+		"blank=",
+		"nosplit=some_value",
+	}
+
+	expectedTaints := []apiv1.Taint{
+		{
+			Key:    "dedicated",
+			Value:  "foo",
+			Effect: apiv1.TaintEffectNoSchedule,
+		},
+		{
+			Key:    "group",
+			Value:  "bar",
+			Effect: apiv1.TaintEffectNoExecute,
+		},
+		{
+			Key:    "app",
+			Value:  "fizz",
+			Effect: apiv1.TaintEffectPreferNoSchedule,
+		},
+		{
+			Key:    "k8s.io/testing/underscore/to/slash",
+			Value:  "fizz",
+			Effect: apiv1.TaintEffectPreferNoSchedule,
+		},
+	}
+
+	taints := extractTaintsFromSpecString(strings.Join(taintsString, ","))
 	assert.Len(t, taints, 4)
 	assert.Equal(t, makeTaintSet(expectedTaints), makeTaintSet(taints))
 }

@@ -55,9 +55,10 @@ type ScaleSet struct {
 	azureRef
 	manager *AzureManager
 
-	minSize int
-	maxSize int
-
+	minSize   int
+	maxSize   int
+	labels    map[string]string
+	taints    string
 	sizeMutex sync.Mutex
 	curSize   int64
 
@@ -82,11 +83,13 @@ func NewScaleSet(spec *dynamic.NodeGroupSpec, az *AzureManager, curSize int64) (
 		},
 		minSize:                   spec.MinSize,
 		maxSize:                   spec.MaxSize,
+		labels:                    spec.Labels,
+		taints:                    spec.Taints,
 		manager:                   az,
 		curSize:                   curSize,
 		sizeRefreshPeriod:         az.azureCache.refreshInterval,
-		enableDynamicInstanceList: az.config.EnableDynamicInstanceList,
 		instancesRefreshJitter:    az.config.VmssVmsCacheJitter,
+		enableDynamicInstanceList: az.config.EnableDynamicInstanceList,
 	}
 
 	if az.config.VmssVmsCacheTTL != 0 {
@@ -513,7 +516,9 @@ func (scaleSet *ScaleSet) TemplateNodeInfo() (*schedulerframework.NodeInfo, erro
 		return nil, err
 	}
 
-	node, err := buildNodeFromTemplate(scaleSet.Name, template, scaleSet.manager)
+	node, err := buildNodeFromTemplate(scaleSet.Name, scaleSet.labels, scaleSet.taints, template, scaleSet.manager,
+		scaleSet.enableDynamicInstanceList)
+
 	if err != nil {
 		return nil, err
 	}
