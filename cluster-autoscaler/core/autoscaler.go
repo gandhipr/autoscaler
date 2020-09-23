@@ -86,6 +86,7 @@ func NewAutoscaler(opts AutoscalerOptions, informerFactory informers.SharedInfor
 		opts.PredicateChecker,
 		opts.ClusterSnapshot,
 		opts.AutoscalingKubeClients,
+		opts.KubeClient,
 		opts.Processors,
 		opts.CloudProvider,
 		opts.ExpanderStrategy,

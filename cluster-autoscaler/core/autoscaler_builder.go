@@ -19,6 +19,7 @@ package core
 import (
 	"flag"
 	"strconv"
+	"strings"
 	"time"
 
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
@@ -31,6 +32,7 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/debuggingsnapshot"
 	"k8s.io/autoscaler/cluster-autoscaler/estimator"
 	"k8s.io/autoscaler/cluster-autoscaler/expander"
+	"k8s.io/autoscaler/cluster-autoscaler/expander/factory"
 	ca_processors "k8s.io/autoscaler/cluster-autoscaler/processors"
 	"k8s.io/autoscaler/cluster-autoscaler/simulator/clustersnapshot"
 	"k8s.io/autoscaler/cluster-autoscaler/simulator/drainability/rules"
@@ -38,7 +40,9 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/simulator/predicatechecker"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/backoff"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/errors"
+	"k8s.io/autoscaler/cluster-autoscaler/utils/units"
 	"k8s.io/client-go/informers"
+	kube_client "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 )
 
@@ -52,48 +56,51 @@ type AutoscalerBuilder interface {
 // `dynamic.Config` read on demand from the configmap and
 // builds a new autoscaler type
 type AutoscalerBuilderImpl struct {
-	autoscalingOptions   config.AutoscalingOptions
-	dynamicConfig        *dynamic.Config
-	InformerFactory      informers.SharedInformerFactory
-	KubeClient           *context.AutoscalingKubeClients
-	PredicateChecker     predicatechecker.PredicateChecker
-	ClusterSnapshot      clustersnapshot.ClusterSnapshot
-	Processors           *ca_processors.AutoscalingProcessors
-	CloudProvider        cloudprovider.CloudProvider
-	ExpanderStrategy     expander.Strategy
-	EstimatorBuilder     estimator.EstimatorBuilder
-	Backoff              backoff.Backoff
-	DebuggingSnapshotter debuggingsnapshot.DebuggingSnapshotter
-	RemainingPdbTracker  pdb.RemainingPdbTracker
-	ScaleUpOrchestrator  scaleup.Orchestrator
-	DeleteOptions        options.NodeDeleteOptions
-	DrainabilityRules    rules.Rules
+	autoscalingOptions     config.AutoscalingOptions
+	dynamicConfig          *dynamic.Config
+	AutoscalingKubeClients *context.AutoscalingKubeClients
+	KubeClient             kube_client.Interface
+	EventsKubeClient       kube_client.Interface
+	InformerFactory        informers.SharedInformerFactory
+	PredicateChecker       predicatechecker.PredicateChecker
+	ClusterSnapshot        clustersnapshot.ClusterSnapshot
+	Processors             *ca_processors.AutoscalingProcessors
+	CloudProvider          cloudprovider.CloudProvider
+	ExpanderStrategy       expander.Strategy
+	EstimatorBuilder       estimator.EstimatorBuilder
+	Backoff                backoff.Backoff
+	DebuggingSnapshotter   debuggingsnapshot.DebuggingSnapshotter
+	RemainingPdbTracker    pdb.RemainingPdbTracker
+	ScaleUpOrchestrator    scaleup.Orchestrator
+	DeleteOptions          options.NodeDeleteOptions
+	DrainabilityRules      rules.Rules
 }
 
 // NewAutoscalerBuilder builds an AutoscalerBuilder from required parameters
 func NewAutoscalerBuilder(opts config.AutoscalingOptions, predicateChecker predicatechecker.PredicateChecker,
 	clusterSnapshot clustersnapshot.ClusterSnapshot, autoscalingKubeClients *context.AutoscalingKubeClients,
-	processors *ca_processors.AutoscalingProcessors, cloudProvider cloudprovider.CloudProvider,
-	expanderStrategy expander.Strategy, estimatorBuilder estimator.EstimatorBuilder,
-	backoff backoff.Backoff, snapshotter debuggingsnapshot.DebuggingSnapshotter,
-	remainingPdbTracker pdb.RemainingPdbTracker, scaleUpOrchestrator scaleup.Orchestrator,
-	deleteOptions options.NodeDeleteOptions,
+	kubeClient kube_client.Interface, processors *ca_processors.AutoscalingProcessors,
+	cloudProvider cloudprovider.CloudProvider, expanderStrategy expander.Strategy,
+	estimatorBuilder estimator.EstimatorBuilder, backoff backoff.Backoff,
+	snapshotter debuggingsnapshot.DebuggingSnapshotter, remainingPdbTracker pdb.RemainingPdbTracker,
+	scaleUpOrchestrator scaleup.Orchestrator, deleteOptions options.NodeDeleteOptions,
 	drainabilityRules rules.Rules) *AutoscalerBuilderImpl {
 
 	return &AutoscalerBuilderImpl{
-		autoscalingOptions:   opts,
-		KubeClient:           autoscalingKubeClients,
-		PredicateChecker:     predicateChecker,
-		ClusterSnapshot:      clusterSnapshot,
-		Processors:           processors,
-		CloudProvider:        cloudProvider,
-		ExpanderStrategy:     expanderStrategy,
-		EstimatorBuilder:     estimatorBuilder,
-		Backoff:              backoff,
-		DebuggingSnapshotter: snapshotter,
-		RemainingPdbTracker:  remainingPdbTracker,
-		ScaleUpOrchestrator:  scaleUpOrchestrator,
-		DeleteOptions:        deleteOptions,
+		autoscalingOptions:     opts,
+		AutoscalingKubeClients: autoscalingKubeClients,
+		KubeClient:             kubeClient,
+		PredicateChecker:       predicateChecker,
+		ClusterSnapshot:        clusterSnapshot,
+		Processors:             processors,
+		CloudProvider:          cloudProvider,
+		ExpanderStrategy:       expanderStrategy,
+		EstimatorBuilder:       estimatorBuilder,
+		Backoff:                backoff,
+		DebuggingSnapshotter:   snapshotter,
+		RemainingPdbTracker:    remainingPdbTracker,
+		ScaleUpOrchestrator:    scaleUpOrchestrator,
+		DeleteOptions:          deleteOptions,
 	}
 }
 
@@ -113,9 +120,17 @@ func (b *AutoscalerBuilderImpl) Build() (Autoscaler, errors.AutoscalerError) {
 		b.CloudProvider = cloudBuilder.NewCloudProvider(options, b.InformerFactory)
 		options = b.updateAutoScalerProfile(options)
 		klog.V(3).Infof("Updating autoscaling options to: %v", options)
+		b.CloudProvider = cloudBuilder.NewCloudProvider(options, b.InformerFactory)
+		expanderFactory := factory.NewFactory()
+		expanderFactory.RegisterDefaultExpanders(b.CloudProvider, b.AutoscalingKubeClients, b.KubeClient, options.ConfigNamespace, options.GRPCExpanderCert, options.GRPCExpanderURL)
+		expanderStrategy, err := expanderFactory.Build(strings.Split(options.ExpanderNames, ","))
+		if err == nil {
+			b.ExpanderStrategy = expanderStrategy
+		}
+
 	}
 
-	return NewStaticAutoscaler(options, b.PredicateChecker, b.ClusterSnapshot, b.KubeClient,
+	return NewStaticAutoscaler(options, b.PredicateChecker, b.ClusterSnapshot, b.AutoscalingKubeClients,
 		b.Processors,
 		b.CloudProvider,
 		b.ExpanderStrategy,
@@ -158,6 +173,28 @@ func (b *AutoscalerBuilderImpl) updateAutoScalerProfile(autoscalingOptions confi
 		autoscalingOptions.NodeGroupDefaults.ScaleDownUnreadyTime = scaleDownUnreadyTime
 	}
 
+	if autoScalerProfile.MaxNodeProvisionTime != "" {
+		maxNodeProvisionTime, _ := time.ParseDuration(autoScalerProfile.MaxNodeProvisionTime)
+		autoscalingOptions.MaxNodeProvisionTime = maxNodeProvisionTime
+	}
+
+	if autoScalerProfile.MinCpu != "" {
+		minCores, _ := strconv.ParseInt(autoScalerProfile.MinCpu, 10, 64)
+		autoscalingOptions.MinCoresTotal = minCores
+	}
+	if autoScalerProfile.MaxCpu != "" {
+		maxCores, _ := strconv.ParseInt(autoScalerProfile.MaxCpu, 10, 64)
+		autoscalingOptions.MaxCoresTotal = maxCores
+	}
+	if autoScalerProfile.MinMemory != "" {
+		minMemory, _ := strconv.ParseInt(autoScalerProfile.MinMemory, 10, 64)
+		autoscalingOptions.MinMemoryTotal = minMemory * units.GiB
+	}
+	if autoScalerProfile.MaxMemory != "" {
+		maxMemory, _ := strconv.ParseInt(autoScalerProfile.MaxMemory, 10, 64)
+		autoscalingOptions.MaxMemoryTotal = maxMemory * units.GiB
+	}
+
 	if autoScalerProfile.ScaleDownUtilizationThreshold != "" {
 		scaleDownUtilizationThreshold, _ := strconv.ParseFloat(autoScalerProfile.ScaleDownUtilizationThreshold, 64)
 		autoscalingOptions.NodeGroupDefaults.ScaleDownUtilizationThreshold = scaleDownUtilizationThreshold
@@ -185,6 +222,16 @@ func (b *AutoscalerBuilderImpl) updateAutoScalerProfile(autoscalingOptions confi
 	if autoScalerProfile.MaxEmptyBulkDelete != "" {
 		maxEmptyBulkDelete, _ := strconv.Atoi(autoScalerProfile.MaxEmptyBulkDelete)
 		autoscalingOptions.MaxEmptyBulkDelete = maxEmptyBulkDelete
+	}
+
+	if autoScalerProfile.OkTotalUnreadyCount != "" {
+		okTotalUnreadyCount, _ := strconv.Atoi(autoScalerProfile.OkTotalUnreadyCount)
+		autoscalingOptions.OkTotalUnreadyCount = okTotalUnreadyCount
+	}
+
+	if autoScalerProfile.MaxTotalUnreadyPercentage != "" {
+		maxTotalUnreadyPercentage, _ := strconv.ParseFloat(autoScalerProfile.MaxTotalUnreadyPercentage, 64)
+		autoscalingOptions.MaxTotalUnreadyPercentage = maxTotalUnreadyPercentage
 	}
 
 	if autoScalerProfile.SkipNodesWithLocalStorage != "" {

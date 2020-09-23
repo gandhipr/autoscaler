@@ -132,6 +132,8 @@ type AutoscalingOptions struct {
 	// This field is optional and could be nil.
 	// DrainPriorityConfig takes higher precedence and MaxGracefulTerminationSec will not be applicable when the DrainPriorityConfig is set.
 	DrainPriorityConfig []kubelet_config.ShutdownGracePeriodByPodPriority
+	//  MaxNodeProvisionTime defines maximum time CA waits for node to be provisioned
+	MaxNodeProvisionTime time.Duration
 	// MaxTotalUnreadyPercentage is the maximum percentage of unready nodes after which CA halts operations
 	MaxTotalUnreadyPercentage float64
 	// OkTotalUnreadyCount is the number of allowed unready nodes, irrespective of max-total-unready-percentage

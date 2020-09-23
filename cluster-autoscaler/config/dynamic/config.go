@@ -39,8 +39,15 @@ type AutoScalerProfile struct {
 	Expander                      string `json:"expander,omitempty" yaml:"expander,omitempty"`
 	NewPodScaleUpDelay            string `json:"new-pod-scale-up-delay,omitempty" yaml:"new-pod-scale-up-delay,omitempty"`
 	MaxEmptyBulkDelete            string `json:"max-empty-bulk-delete,omitempty" yaml:"max-empty-bulk-delete,omitempty"`
+	OkTotalUnreadyCount           string `json:"ok-total-unready-count,omitempty" yaml:"ok-total-unready-count,omitempty"`
+	MaxTotalUnreadyPercentage     string `json:"max-total-unready-percentage,omitempty" yaml:"max-total-unready-percentage,omitempty"`
 	SkipNodesWithLocalStorage     string `json:"skip-nodes-with-local-storage,omitempty" yaml:"skip-nodes-with-local-storage,omitempty"`
 	SkipNodesWithSystemPods       string `json:"skip-nodes-with-system-pods,omitempty" yaml:"skip-nodes-with-system-pods,omitempty"`
+	MaxNodeProvisionTime          string `json:"max-node-provision-time,omitempty" yaml:"max-node-provision-time,omitempty"`
+	MinCpu                        string `json:"min-cpu,omitempty" yaml:"min-cpu"`
+	MaxCpu                        string `json:"max-cpu,omitempty" yaml:"max-cpu,omitempty"`
+	MinMemory                     string `json:"min-memory,omitempty" yaml:"min-memory,omitempty"`
+	MaxMemory                     string `json:"max-memory,omitempty" yaml:"max-memory,omitempty"`
 }
 
 // Config holds the dynamic configuration of autoscaler which can be refreshed at runtime
