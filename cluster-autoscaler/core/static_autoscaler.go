@@ -17,10 +17,14 @@ limitations under the License.
 package core
 
 import (
-	"errors"
+	ctx "context"
+	errs "errors"
 	"fmt"
 	"reflect"
 	"time"
+
+	kube_errors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -30,6 +34,7 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/core/scaleup"
 	orchestrator "k8s.io/autoscaler/cluster-autoscaler/core/scaleup/orchestrator"
 	"k8s.io/autoscaler/cluster-autoscaler/debuggingsnapshot"
+	"k8s.io/autoscaler/cluster-autoscaler/utils/errors"
 	kube_util "k8s.io/autoscaler/cluster-autoscaler/utils/kubernetes"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/taints"
 	schedulerframework "k8s.io/kubernetes/pkg/scheduler/framework"
@@ -154,7 +159,7 @@ func NewStaticAutoscaler(
 	}
 	clusterStateRegistry := clusterstate.NewClusterStateRegistry(cloudProvider, clusterStateConfig,
 		autoscalingKubeClients.LogRecorder, backoff, processors.NodeGroupConfigProcessor)
-	
+
 	processorCallbacks := newStaticAutoscalerProcessorCallbacks()
 	autoscalingContext := context.NewAutoscalingContext(
 		opts,
@@ -281,7 +286,7 @@ func (a *StaticAutoscaler) initializeRemainingPdbTracker() caerrors.AutoscalerEr
 }
 
 // RunOnce iterates over node groups and scales them up/down if necessary
-func (a *StaticAutoscaler) RunOnce(currentTime time.Time) caerrors.AutoscalerError {
+func (a *StaticAutoscaler) RunOnce(currentTime time.Time) (typedErr errors.AutoscalerError) {
 	a.cleanUpIfRequired()
 	a.processorCallbacks.reset()
 	a.clusterStateRegistry.PeriodicCleanup()
@@ -294,6 +299,19 @@ func (a *StaticAutoscaler) RunOnce(currentTime time.Time) caerrors.AutoscalerErr
 	klog.V(4).Info("Starting main loop")
 
 	stateUpdateStart := time.Now()
+
+	// Fetch the configmap to ensure apiserver connectivity
+	// Listers are backed by a cache which means in cases when apiserver
+	// is unresponsive, you may get stale data
+	// One example of a bad scenario is if the cache data is empty, all
+	// nodes will be counted as unregistered nodes and eventually deleted
+	// after the unregistered node 15 min deletion threshold
+	// See more: https://github.com/kubernetes/autoscaler/pull/3737
+	_, err := a.ClientSet.CoreV1().ConfigMaps(a.ConfigNamespace).Get(ctx.TODO(), a.AutoscalingContext.StatusConfigMapName, metav1.GetOptions{})
+	if err != nil && !kube_errors.IsNotFound(err) {
+		klog.Errorf("Failed to fetch %s configmap: %v, skipping iteration", a.AutoscalingContext.StatusConfigMapName, err)
+		return errors.ToAutoscalerError(errors.ApiCallError, err)
+	}
 
 	// Get nodes and pods currently living on cluster
 	allNodes, readyNodes, typedErr := a.obtainNodeLists(a.CloudProvider)
@@ -391,8 +409,12 @@ func (a *StaticAutoscaler) RunOnce(currentTime time.Time) caerrors.AutoscalerErr
 		// Update status information when the loop is done (regardless of reason)
 		if autoscalingContext.WriteStatusConfigMap {
 			status := a.clusterStateRegistry.GetStatus(currentTime)
-			utils.WriteStatusConfigMap(autoscalingContext.ClientSet, autoscalingContext.ConfigNamespace,
+			_, writeErr := utils.WriteStatusConfigMap(autoscalingContext.ClientSet, autoscalingContext.ConfigNamespace,
 				status.GetReadableString(), a.AutoscalingContext.LogRecorder, a.AutoscalingContext.StatusConfigMapName)
+			// If no other errors occurred during the run and the configmap write failed, set the typedErr
+			if typedErr == nil && writeErr != nil {
+				typedErr = errors.NewAutoscalerError(errors.ApiCallError, "%v", writeErr)
+			}
 		}
 
 		// This deferred processor execution allows the processors to handle a situation when a scale-(up|down)
@@ -497,7 +519,7 @@ func (a *StaticAutoscaler) RunOnce(currentTime time.Time) caerrors.AutoscalerErr
 			klog.Errorf("Failed to remove NotStarted node %s from cluster snapshot: %v", notStartedNodeName, err)
 			// ErrNodeNotFound shouldn't happen (so it needs to be logged above if it does), but what we care about here is that the
 			// node is not in the snapshot - so we don't have to error out in that case.
-			if !errors.Is(err, clustersnapshot.ErrNodeNotFound) {
+			if !errs.Is(err, clustersnapshot.ErrNodeNotFound) {
 				return caerrors.ToAutoscalerError(caerrors.InternalError, err)
 			}
 		}
