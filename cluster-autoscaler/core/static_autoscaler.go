@@ -398,6 +398,10 @@ func (a *StaticAutoscaler) RunOnce(currentTime time.Time) (typedErr errors.Autos
 		klog.Errorf("Failed to update cluster state: %v", typedErr)
 		return typedErr
 	}
+
+	// Cleanup Deletion taints from already deallocated nodes so that they dont prevent scheduling for the
+	// next workload
+	a.cleanUpTaintsFromDeallocatedNodes(allNodes)
 	metrics.UpdateDurationFromStart(metrics.UpdateState, stateUpdateStart)
 
 	scaleUpStatus := &status.ScaleUpStatus{Result: status.ScaleUpNotTried}
@@ -1006,6 +1010,32 @@ func (a *StaticAutoscaler) reportTaintsCount(nodes []*apiv1.Node) {
 	foundTaints := taints.CountNodeTaints(nodes, a.taintConfig)
 	for taintType, count := range foundTaints {
 		metrics.ObserveNodeTaintsCount(taintType, float64(count))
+
+	}
+}
+
+// cleanUpTaintsFromDeallocatedNodes cleans up the ToBeDeleted taint from already deallocated nodes
+// so in the future they can be started and workloads can be scheduled on them
+// This is a best effort check for "Deallocation" because it can take sometime for cloudprovider
+// to apply the shutdown taint. In those cases, we resort to the unreacahble taint.
+func (a *StaticAutoscaler) cleanUpTaintsFromDeallocatedNodes(allNodes []*apiv1.Node) {
+	for _, node := range allNodes {
+		if !(taints.HasShutdownTaint(node) || taints.HasUnreachableTaint(node)) || !taints.HasToBeDeletedTaint(node) {
+			continue
+		}
+		nodeGroup, err := a.AutoscalingContext.CloudProvider.NodeGroupForNode(node)
+		if err != nil {
+			klog.V(5).Infof("Failed to get node group for %s: %v", node.Name, err)
+			continue
+		}
+		if nodeGroup == nil || reflect.ValueOf(nodeGroup).IsNil() {
+			klog.V(5).Infof("No node group for node %s, skipping", node)
+			continue
+		}
+		ng, ok := nodeGroup.(cloudprovider.PolicyNodeGroup)
+		if ok && ng.ScaleDownPolicy() == cloudprovider.Deallocate {
+			taints.CleanToBeDeleted(node, a.ClientSet, a.AutoscalingContext.CordonNodeBeforeTerminate)
+		}
 	}
 }
 

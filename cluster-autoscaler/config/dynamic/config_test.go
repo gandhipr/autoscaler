@@ -17,6 +17,7 @@ limitations under the License.
 package dynamic
 
 import (
+	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"strings"
 	"testing"
 
@@ -35,7 +36,7 @@ var configAutoScalerProfileInvalid = `
         {
           "minSize": 1,
           "maxSize": 100,
-          "name": "aks-nodepool1-24160808-vmss"
+          "name": "aks-nodepool1-24160808-vmss",
         }
 	  ],
 	  "autoScalerProfile": []
@@ -48,7 +49,8 @@ var configValid = `
 	  {
 		"minSize": 1,
 		"maxSize": 100,
-		"name": "aks-nodepool1-24160808-vmss"
+		"name": "aks-nodepool1-24160808-vmss",
+        "scaleDownPolicy": "Delete"
 	  }
 	],
 	"autoScalerProfile": {
@@ -73,6 +75,7 @@ func TestBuildConfig(t *testing.T) {
 		assert.Equal(t, "aks-nodepool1-24160808-vmss", config.NodeGroups[0].Name)
 		assert.Equal(t, 1, config.NodeGroups[0].MinSize)
 		assert.Equal(t, 100, config.NodeGroups[0].MaxSize)
+		assert.Equal(t, cloudprovider.Delete, config.NodeGroups[0].ScaleDownPolicy)
 	})
 }
 
@@ -99,6 +102,7 @@ func TestUnmarshalConfig(t *testing.T) {
 		assert.Equal(t, "aks-nodepool1-24160808-vmss", config.NodeGroups[0].Name)
 		assert.Equal(t, 1, config.NodeGroups[0].MinSize)
 		assert.Equal(t, 100, config.NodeGroups[0].MaxSize)
+		assert.Equal(t, cloudprovider.Delete, config.NodeGroups[0].ScaleDownPolicy)
 
 	})
 }
@@ -107,14 +111,16 @@ func TestValidate(t *testing.T) {
 		c := &Config{
 			NodeGroups: []NodeGroupSpec{
 				{
-					Name:    "test1",
-					MinSize: 1,
-					MaxSize: 50,
+					Name:            "test1",
+					MinSize:         1,
+					MaxSize:         50,
+					ScaleDownPolicy: cloudprovider.Delete,
 				},
 				{
-					Name:    "test2",
-					MinSize: 10,
-					MaxSize: 70,
+					Name:            "test2",
+					MinSize:         10,
+					MaxSize:         70,
+					ScaleDownPolicy: cloudprovider.Deallocate,
 				},
 			},
 		}
@@ -159,6 +165,26 @@ func TestValidate(t *testing.T) {
 		err := c.validate()
 		assert.EqualError(t, err, "invalid nodeGroup: test1, max size must be greater or equal to min size")
 	})
+
+	t.Run("test validate invalid scaleDownPolicy", func(t *testing.T) {
+		c := &Config{
+			NodeGroups: []NodeGroupSpec{
+				{
+					Name:            "test1",
+					MinSize:         1,
+					MaxSize:         50,
+					ScaleDownPolicy: "InvalidPolicy",
+				},
+				{
+					Name:    "test2",
+					MinSize: 10,
+					MaxSize: 70,
+				},
+			},
+		}
+		err := c.validate()
+		assert.EqualError(t, err, "invalid scaledown policy: InvalidPolicy. Valid values are: Delete, Deallocate")
+	})
 }
 
 func TestNodeGroupSpecStrings(t *testing.T) {
@@ -166,33 +192,37 @@ func TestNodeGroupSpecStrings(t *testing.T) {
 		c := &Config{
 			NodeGroups: []NodeGroupSpec{
 				{
-					Name:    "test1",
-					MinSize: 1,
-					MaxSize: 50,
+					Name:            "test1",
+					MinSize:         1,
+					MaxSize:         50,
+					ScaleDownPolicy: cloudprovider.Delete,
 				},
 				{
-					Name:    "test2",
-					MinSize: 10,
-					MaxSize: 70,
+					Name:            "test2",
+					MinSize:         10,
+					MaxSize:         70,
+					ScaleDownPolicy: cloudprovider.Deallocate,
 				},
 			},
 		}
 		specStrings := c.NodeGroupSpecStrings()
-		assert.Equal(t, []string{"1:50:test1:{}|", "10:70:test2:{}|"}, specStrings)
+		assert.Equal(t, []string{"1:50:Delete:test1:{}|", "10:70:Deallocate:test2:{}|"}, specStrings)
 	})
 
 	t.Run("only labels no taints", func(t *testing.T) {
 		c := &Config{
 			NodeGroups: []NodeGroupSpec{
 				{
-					Name:    "test1",
-					MinSize: 1,
-					MaxSize: 50,
+					Name:            "test1",
+					MinSize:         1,
+					MaxSize:         50,
+					ScaleDownPolicy: cloudprovider.Deallocate,
 				},
 				{
-					Name:    "test2",
-					MinSize: 10,
-					MaxSize: 70,
+					Name:            "test2",
+					MinSize:         10,
+					MaxSize:         70,
+					ScaleDownPolicy: cloudprovider.Deallocate,
 					Labels: map[string]string{
 						"environment": "prod",
 					},
@@ -200,27 +230,29 @@ func TestNodeGroupSpecStrings(t *testing.T) {
 			},
 		}
 		specStrings := c.NodeGroupSpecStrings()
-		assert.Equal(t, []string{"1:50:test1:{}|", "10:70:test2:{\"environment\":\"prod\"}|"}, specStrings)
+		assert.Equal(t, []string{"1:50:Deallocate:test1:{}|", "10:70:Deallocate:test2:{\"environment\":\"prod\"}|"}, specStrings)
 	})
 
 	t.Run("only taints", func(t *testing.T) {
 		c := &Config{
 			NodeGroups: []NodeGroupSpec{
 				{
-					Name:    "test1",
-					MinSize: 1,
-					MaxSize: 50,
-					Taints:  "key1=value1:NoSchedule,key2=value2:NoSchedule",
+					Name:            "test1",
+					MinSize:         1,
+					MaxSize:         50,
+					Taints:          "key1=value1:NoSchedule,key2=value2:NoSchedule",
+					ScaleDownPolicy: cloudprovider.Delete,
 				},
 				{
-					Name:    "test2",
-					MinSize: 10,
-					MaxSize: 70,
+					Name:            "test2",
+					MinSize:         10,
+					MaxSize:         70,
+					ScaleDownPolicy: cloudprovider.Delete,
 				},
 			},
 		}
 		specStrings := c.NodeGroupSpecStrings()
-		assert.Equal(t, []string{"1:50:test1:{}|key1=value1:NoSchedule,key2=value2:NoSchedule", "10:70:test2:{}|"}, specStrings)
+		assert.Equal(t, []string{"1:50:Delete:test1:{}|key1=value1:NoSchedule,key2=value2:NoSchedule", "10:70:Delete:test2:{}|"}, specStrings)
 	})
 
 	t.Run("mix of labels and taints", func(t *testing.T) {
@@ -234,6 +266,7 @@ func TestNodeGroupSpecStrings(t *testing.T) {
 					Labels: map[string]string{
 						"environment": "prod",
 					},
+					ScaleDownPolicy: cloudprovider.Delete,
 				},
 				{
 					Name:    "test2",
@@ -242,6 +275,7 @@ func TestNodeGroupSpecStrings(t *testing.T) {
 					Labels: map[string]string{
 						"environment": "staging",
 					},
+					ScaleDownPolicy: cloudprovider.Delete,
 				},
 				{
 					Name:    "test3",
@@ -251,13 +285,14 @@ func TestNodeGroupSpecStrings(t *testing.T) {
 						"environment": "dev",
 						"owner":       "myself",
 					},
-					Taints: "key1=value1:NoSchedule,key2=value2:NoSchedule",
+					Taints:          "key1=value1:NoSchedule,key2=value2:NoSchedule",
+					ScaleDownPolicy: cloudprovider.Delete,
 				},
 			},
 		}
 		specStrings := c.NodeGroupSpecStrings()
-		assert.Equal(t, []string{"1:50:test1:{\"environment\":\"prod\"}|key1=value1:NoSchedule,key2=value2:NoSchedule",
-			"10:70:test2:{\"environment\":\"staging\"}|",
-			"1:5:test3:{\"environment\":\"dev\",\"owner\":\"myself\"}|key1=value1:NoSchedule,key2=value2:NoSchedule"}, specStrings)
+		assert.Equal(t, []string{"1:50:Delete:test1:{\"environment\":\"prod\"}|key1=value1:NoSchedule,key2=value2:NoSchedule",
+			"10:70:Delete:test2:{\"environment\":\"staging\"}|",
+			"1:5:Delete:test3:{\"environment\":\"dev\",\"owner\":\"myself\"}|key1=value1:NoSchedule,key2=value2:NoSchedule"}, specStrings)
 	})
 }

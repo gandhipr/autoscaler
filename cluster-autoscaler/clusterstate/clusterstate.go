@@ -395,11 +395,23 @@ func getTargetSizes(cp cloudprovider.CloudProvider) (map[string]int, error) {
 func (csr *ClusterStateRegistry) IsClusterHealthy() bool {
 	csr.Lock()
 	defer csr.Unlock()
+	// Do not consider deallocated nodes in the cluster health check
+	// Those nodes will always exist in NotReady state
+	totalUnready := csr.totalReadiness.Unready
+	delta := len(totalUnready)
+	if cloudprovider.IsAnyNodeGroupInDeallocationMode(csr.cloudProvider.NodeGroups()) {
+		totalDeallocated := csr.totalReadiness.Deallocated
+		delta = len(totalUnready) - len(totalDeallocated)
+		klog.V(5).Infof("Cluster Health Check - totalUnready: %d, totalDeallocated: %d", len(totalUnready), len(totalDeallocated))
+		// This shouldn't happen but if it doesn assume healthy
+		if delta < 0 {
+			klog.Warningf("Delta is negative - assuming cluster is healthy")
+			return true
+		}
+	}
 
-	totalUnready := len(csr.totalReadiness.Unready)
-
-	if totalUnready > csr.config.OkTotalUnreadyCount &&
-		float64(totalUnready) > csr.config.MaxTotalUnreadyPercentage/100.0*float64(len(csr.nodes)) {
+	if delta > csr.config.OkTotalUnreadyCount &&
+		float64(delta) > csr.config.MaxTotalUnreadyPercentage/100.0*float64(len(csr.nodes)) {
 		return false
 	}
 
@@ -407,20 +419,26 @@ func (csr *ClusterStateRegistry) IsClusterHealthy() bool {
 }
 
 // IsNodeGroupHealthy returns true if the node group health is within the acceptable limits
-func (csr *ClusterStateRegistry) IsNodeGroupHealthy(nodeGroupName string) bool {
-	acceptable, found := csr.acceptableRanges[nodeGroupName]
+func (csr *ClusterStateRegistry) IsNodeGroupHealthy(nodeGroup cloudprovider.NodeGroup) bool {
+	// NodeGroups with deallocated nodes can have a lot of Unready nodes - disable the health check
+	// for those so they can be scaled up
+	policyNg, ok := nodeGroup.(cloudprovider.PolicyNodeGroup)
+	if ok && policyNg.ScaleDownPolicy() == cloudprovider.Deallocate {
+		return true
+	}
+	acceptable, found := csr.acceptableRanges[nodeGroup.Id()]
 	if !found {
-		klog.Warningf("Failed to find acceptable ranges for %v", nodeGroupName)
+		klog.Warningf("Failed to find acceptable ranges for %v", nodeGroup.Id())
 		return false
 	}
 
-	readiness, found := csr.perNodeGroupReadiness[nodeGroupName]
+	readiness, found := csr.perNodeGroupReadiness[nodeGroup.Id()]
 	if !found {
 		// No nodes but target == 0 or just scaling up.
 		if acceptable.CurrentTarget == 0 || (acceptable.MinNodes == 0 && acceptable.CurrentTarget > 0) {
 			return true
 		}
-		klog.Warningf("Failed to find readiness information for %v", nodeGroupName)
+		klog.Warningf("Failed to find readiness information for %v", nodeGroup.Id())
 		return false
 	}
 
@@ -458,7 +476,7 @@ func (csr *ClusterStateRegistry) updateNodeGroupMetrics() {
 
 // IsNodeGroupSafeToScaleUp returns information about node group safety to be scaled up now.
 func (csr *ClusterStateRegistry) IsNodeGroupSafeToScaleUp(nodeGroup cloudprovider.NodeGroup, now time.Time) NodeGroupScalingSafety {
-	isHealthy := csr.IsNodeGroupHealthy(nodeGroup.Id())
+	isHealthy := csr.IsNodeGroupHealthy(nodeGroup)
 	backoffStatus := csr.backoff.BackoffStatus(nodeGroup, csr.nodeInfosForGroups[nodeGroup.Id()], now)
 	return NodeGroupScalingSafety{SafeToScale: isHealthy && !backoffStatus.IsBackedOff, Healthy: isHealthy, BackoffStatus: backoffStatus}
 }
@@ -582,6 +600,8 @@ type Readiness struct {
 	LongUnregistered []string
 	// Names of nodes that haven't yet registered.
 	Unregistered []string
+	// Number of deallocated nodes that exist in K8s
+	Deallocated []string
 	// Time when the readiness was measured.
 	Time time.Time
 	// Names of nodes that are Unready due to missing resources.
@@ -594,10 +614,15 @@ func (csr *ClusterStateRegistry) updateReadinessStats(currentTime time.Time) {
 	perNodeGroup := make(map[string]Readiness)
 	total := Readiness{Time: currentTime}
 
-	update := func(current Readiness, node *apiv1.Node, nr kube_util.NodeReadiness) Readiness {
+	update := func(current Readiness, node *apiv1.Node, nr kube_util.NodeReadiness, nodeGroup cloudprovider.NodeGroup) Readiness {
+		policyNg, ok := nodeGroup.(cloudprovider.PolicyNodeGroup)
 		current.Registered = append(current.Registered, node.Name)
 		if _, isDeleted := csr.deletedNodes[node.Name]; isDeleted {
 			current.Deleted = append(current.Deleted, node.Name)
+			// Also use unreachable to account for delays in applying shutdown taint
+		} else if (nodeGroup != nil && ok && policyNg.ScaleDownPolicy() == cloudprovider.Deallocate) && (taints.HasShutdownTaint(node) || taints.HasUnreachableTaint(node)) {
+			current.Deallocated = append(current.Deallocated, node.Name)
+			current.Unready = append(current.Unready, node.Name)
 		} else if nr.Ready {
 			current.Ready = append(current.Ready, node.Name)
 		} else if node.CreationTimestamp.Time.Add(MaxNodeStartupTime).After(currentTime) {
@@ -624,9 +649,9 @@ func (csr *ClusterStateRegistry) updateReadinessStats(currentTime time.Time) {
 				klog.Warningf("Failed to get readiness info for %s: %v", node.Name, errReady)
 			}
 		} else {
-			perNodeGroup[nodeGroup.Id()] = update(perNodeGroup[nodeGroup.Id()], node, nr)
+			perNodeGroup[nodeGroup.Id()] = update(perNodeGroup[nodeGroup.Id()], node, nr, nodeGroup)
 		}
-		total = update(total, node, nr)
+		total = update(total, node, nr, nodeGroup)
 	}
 
 	for _, unregistered := range csr.unregisteredNodes {
@@ -770,7 +795,7 @@ func (csr *ClusterStateRegistry) GetStatus(now time.Time) *api.ClusterAutoscaler
 
 		// Health.
 		nodeGroupStatus.Conditions = append(nodeGroupStatus.Conditions, buildHealthStatusNodeGroup(
-			csr.IsNodeGroupHealthy(nodeGroup.Id()), readiness, acceptable, nodeGroup.MinSize(), nodeGroup.MaxSize()))
+			csr.IsNodeGroupHealthy(nodeGroup), readiness, acceptable, nodeGroup.MinSize(), nodeGroup.MaxSize()))
 
 		// Scale up.
 		nodeGroupStatus.Conditions = append(nodeGroupStatus.Conditions, buildScaleUpStatusNodeGroup(
@@ -985,10 +1010,19 @@ func (csr *ClusterStateRegistry) GetUpcomingNodes() (upcomingCounts map[string]i
 	registeredNodeNames = map[string][]string{}
 	for _, nodeGroup := range csr.cloudProvider.NodeGroups() {
 		id := nodeGroup.Id()
+		policyNg, ok := nodeGroup.(cloudprovider.PolicyNodeGroup)
+
 		readiness := csr.perNodeGroupReadiness[id]
 		ar := csr.acceptableRanges[id]
 		// newNodes is the number of nodes that
 		newNodes := ar.CurrentTarget - (len(readiness.Ready) + len(readiness.Unready) + len(readiness.LongUnregistered))
+
+		if ok && policyNg.ScaleDownPolicy() == cloudprovider.Deallocate {
+			// newNodes are the upcoming nodes. This is the TargetSize (goal state of the nodegroup) subtracted from (the current ready nodes + (nodes transitioning from deallocated state to running))+ unregistered + still starting nodes)
+			newNodes = ar.CurrentTarget - (len(readiness.Ready) + (len(readiness.Unready) - len(readiness.Deallocated)) + len(readiness.LongUnregistered))
+		}
+
+		klog.V(5).Infof("newNodes: %d, currentTarget: %d, deallocated: %d, readinessReady: %d, readinessUnready: %d, readiness.LongUnregistered: %d", newNodes, ar.CurrentTarget,len(readiness.Deallocated), len(readiness.Ready), len(readiness.Unready), len(readiness.LongUnregistered))
 		if newNodes <= 0 {
 			// Negative value is unlikely but theoretically possible.
 			continue

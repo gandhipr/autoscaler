@@ -299,51 +299,6 @@ func TestIncreaseSizeOnVMProvisioningFailed(t *testing.T) {
 	}
 }
 
-func TestIncreaseSizeOnVMSSUpdating(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	manager := newTestAzureManager(t)
-	vmssName := "vmss-updating"
-	var vmssCapacity int64 = 3
-
-	expectedScaleSets := []compute.VirtualMachineScaleSet{
-		{
-			Name: &vmssName,
-			Sku: &compute.Sku{
-				Capacity: &vmssCapacity,
-			},
-			VirtualMachineScaleSetProperties: &compute.VirtualMachineScaleSetProperties{
-				ProvisioningState: to.StringPtr(provisioningStateUpdating),
-				OrchestrationMode: compute.Uniform,
-			},
-		},
-	}
-	expectedVMSSVMs := newTestVMSSVMList(3)
-
-	mockVMSSClient := mockvmssclient.NewMockInterface(ctrl)
-	mockVMSSClient.EXPECT().List(gomock.Any(), manager.config.ResourceGroup).Return(expectedScaleSets, nil)
-	mockVMSSClient.EXPECT().CreateOrUpdateAsync(gomock.Any(), manager.config.ResourceGroup, vmssName, gomock.Any()).Return(nil, nil)
-	mockVMSSClient.EXPECT().WaitForCreateOrUpdateResult(gomock.Any(), gomock.Any(), manager.config.ResourceGroup).Return(&http.Response{StatusCode: http.StatusOK}, nil).AnyTimes()
-	manager.azClient.virtualMachineScaleSetsClient = mockVMSSClient
-	mockVMSSVMClient := mockvmssvmclient.NewMockInterface(ctrl)
-	mockVMSSVMClient.EXPECT().List(gomock.Any(), manager.config.ResourceGroup, "vmss-updating", gomock.Any()).Return(expectedVMSSVMs, nil).AnyTimes()
-	manager.azClient.virtualMachineScaleSetVMsClient = mockVMSSVMClient
-	manager.explicitlyConfigured["vmss-updating"] = true
-	registered := manager.RegisterNodeGroup(newTestScaleSet(manager, vmssName))
-	assert.True(t, registered)
-	manager.Refresh()
-
-	provider, err := BuildAzureCloudProvider(manager, nil)
-	assert.NoError(t, err)
-
-	// Scaling should continue even VMSS is under updating.
-	scaleSet, ok := provider.NodeGroups()[0].(*ScaleSet)
-	assert.True(t, ok)
-	err = scaleSet.IncreaseSize(1)
-	assert.NoError(t, err)
-}
-
 func TestBelongs(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()

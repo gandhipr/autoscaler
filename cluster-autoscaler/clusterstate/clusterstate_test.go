@@ -107,7 +107,7 @@ func TestEmptyOK(t *testing.T) {
 	now := time.Now()
 
 	provider := testprovider.NewTestCloudProvider(nil, nil)
-	provider.AddNodeGroup("ng1", 0, 10, 0)
+	ng1 := provider.AddNodeGroup("ng1", 0, 10, 0)
 	assert.NotNil(t, provider)
 
 	fakeClient := &fake.Clientset{}
@@ -120,7 +120,7 @@ func TestEmptyOK(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, clusterstate.IsClusterHealthy())
 	assert.Empty(t, clusterstate.GetScaleUpFailures())
-	assert.True(t, clusterstate.IsNodeGroupHealthy("ng1"))
+	assert.True(t, clusterstate.IsNodeGroupHealthy(ng1))
 	assert.False(t, clusterstate.IsNodeGroupScalingUp("ng1"))
 	assert.False(t, clusterstate.HasNodeGroupStartedScaleUp("ng1"))
 
@@ -132,7 +132,7 @@ func TestEmptyOK(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.True(t, clusterstate.IsClusterHealthy())
-	assert.True(t, clusterstate.IsNodeGroupHealthy("ng1"))
+	assert.True(t, clusterstate.IsNodeGroupHealthy(ng1))
 	assert.True(t, clusterstate.IsNodeGroupScalingUp("ng1"))
 	assert.True(t, clusterstate.HasNodeGroupStartedScaleUp("ng1"))
 }
@@ -187,7 +187,7 @@ func TestOKOneUnreadyNode(t *testing.T) {
 	SetNodeReadyState(ng2_1, false, now.Add(-time.Minute))
 
 	provider := testprovider.NewTestCloudProvider(nil, nil)
-	provider.AddNodeGroup("ng1", 1, 10, 1)
+	ng1 := provider.AddNodeGroup("ng1", 1, 10, 1)
 	provider.AddNodeGroup("ng2", 1, 10, 1)
 	provider.AddNode("ng1", ng1_1)
 	provider.AddNode("ng2", ng2_1)
@@ -203,7 +203,7 @@ func TestOKOneUnreadyNode(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, clusterstate.IsClusterHealthy())
 	assert.Empty(t, clusterstate.GetScaleUpFailures())
-	assert.True(t, clusterstate.IsNodeGroupHealthy("ng1"))
+	assert.True(t, clusterstate.IsNodeGroupHealthy(ng1))
 
 	status := clusterstate.GetStatus(now)
 	assert.Equal(t, api.ClusterAutoscalerHealthy,
@@ -252,7 +252,7 @@ func TestOKOneUnreadyNodeWithScaleDownCandidate(t *testing.T) {
 	SetNodeReadyState(ng2_1, false, now.Add(-time.Minute))
 
 	provider := testprovider.NewTestCloudProvider(nil, nil)
-	provider.AddNodeGroup("ng1", 1, 10, 1)
+	ng1 := provider.AddNodeGroup("ng1", 1, 10, 1)
 	provider.AddNodeGroup("ng2", 1, 10, 1)
 	provider.AddNode("ng1", ng1_1)
 	provider.AddNode("ng2", ng2_1)
@@ -270,7 +270,7 @@ func TestOKOneUnreadyNodeWithScaleDownCandidate(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, clusterstate.IsClusterHealthy())
 	assert.Empty(t, clusterstate.GetScaleUpFailures())
-	assert.True(t, clusterstate.IsNodeGroupHealthy("ng1"))
+	assert.True(t, clusterstate.IsNodeGroupHealthy(ng1))
 
 	status := clusterstate.GetStatus(now)
 	assert.Equal(t, api.ClusterAutoscalerHealthy,
@@ -316,7 +316,7 @@ func TestMissingNodes(t *testing.T) {
 	SetNodeReadyState(ng2_1, true, now.Add(-time.Minute))
 
 	provider := testprovider.NewTestCloudProvider(nil, nil)
-	provider.AddNodeGroup("ng1", 1, 10, 5)
+	ng1 := provider.AddNodeGroup("ng1", 1, 10, 5)
 	provider.AddNodeGroup("ng2", 1, 10, 1)
 
 	provider.AddNode("ng1", ng1_1)
@@ -333,7 +333,7 @@ func TestMissingNodes(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, clusterstate.IsClusterHealthy())
 	assert.Empty(t, clusterstate.GetScaleUpFailures())
-	assert.False(t, clusterstate.IsNodeGroupHealthy("ng1"))
+	assert.False(t, clusterstate.IsNodeGroupHealthy(ng1))
 
 	status := clusterstate.GetStatus(now)
 	assert.Equal(t, api.ClusterAutoscalerHealthy,
@@ -359,7 +359,7 @@ func TestTooManyUnready(t *testing.T) {
 	SetNodeReadyState(ng2_1, false, now.Add(-time.Minute))
 
 	provider := testprovider.NewTestCloudProvider(nil, nil)
-	provider.AddNodeGroup("ng1", 1, 10, 1)
+	ng1 := provider.AddNodeGroup("ng1", 1, 10, 1)
 	provider.AddNodeGroup("ng2", 1, 10, 1)
 	provider.AddNode("ng1", ng1_1)
 	provider.AddNode("ng2", ng2_1)
@@ -375,7 +375,7 @@ func TestTooManyUnready(t *testing.T) {
 	assert.NoError(t, err)
 	assert.False(t, clusterstate.IsClusterHealthy())
 	assert.Empty(t, clusterstate.GetScaleUpFailures())
-	assert.True(t, clusterstate.IsNodeGroupHealthy("ng1"))
+	assert.True(t, clusterstate.IsNodeGroupHealthy(ng1))
 }
 
 func TestUnreadyLongAfterCreation(t *testing.T) {
@@ -459,7 +459,7 @@ func TestExpiredScaleUp(t *testing.T) {
 	SetNodeReadyState(ng1_1, true, now.Add(-time.Minute))
 
 	provider := testprovider.NewTestCloudProvider(nil, nil)
-	provider.AddNodeGroup("ng1", 1, 10, 5)
+	ng1 := provider.AddNodeGroup("ng1", 1, 10, 5)
 	provider.AddNode("ng1", ng1_1)
 	assert.NotNil(t, provider)
 
@@ -473,7 +473,7 @@ func TestExpiredScaleUp(t *testing.T) {
 	err := clusterstate.UpdateNodes([]*apiv1.Node{ng1_1}, nil, now)
 	assert.NoError(t, err)
 	assert.True(t, clusterstate.IsClusterHealthy())
-	assert.False(t, clusterstate.IsNodeGroupHealthy("ng1"))
+	assert.False(t, clusterstate.IsNodeGroupHealthy(ng1))
 	assert.Equal(t, clusterstate.GetScaleUpFailures(), map[string][]ScaleUpFailure{
 		"ng1": {
 			{NodeGroup: provider.GetNodeGroup("ng1"), Time: now, Reason: metrics.Timeout},
@@ -922,7 +922,7 @@ func TestScaleUpBackoff(t *testing.T) {
 	err := clusterstate.UpdateNodes([]*apiv1.Node{ng1_1, ng1_2, ng1_3}, nil, now)
 	assert.NoError(t, err)
 	assert.True(t, clusterstate.IsClusterHealthy())
-	assert.True(t, clusterstate.IsNodeGroupHealthy("ng1"))
+	assert.True(t, clusterstate.IsNodeGroupHealthy(provider.GetNodeGroup("ng1")))
 	assert.Equal(t, NodeGroupScalingSafety{
 		SafeToScale: false,
 		Healthy:     true,
@@ -946,7 +946,7 @@ func TestScaleUpBackoff(t *testing.T) {
 	// Backoff should expire after timeout
 	now = now.Add(5 * time.Minute /*InitialNodeGroupBackoffDuration*/).Add(time.Second)
 	assert.True(t, clusterstate.IsClusterHealthy())
-	assert.True(t, clusterstate.IsNodeGroupHealthy("ng1"))
+	assert.True(t, clusterstate.IsNodeGroupHealthy(provider.GetNodeGroup("ng1")))
 	assert.Equal(t, NodeGroupScalingSafety{SafeToScale: true, Healthy: true}, clusterstate.IsNodeGroupSafeToScaleUp(ng1, now))
 
 	// Another failed scale up should cause longer backoff
@@ -955,7 +955,7 @@ func TestScaleUpBackoff(t *testing.T) {
 	err = clusterstate.UpdateNodes([]*apiv1.Node{ng1_1, ng1_2, ng1_3}, nil, now)
 	assert.NoError(t, err)
 	assert.True(t, clusterstate.IsClusterHealthy())
-	assert.True(t, clusterstate.IsNodeGroupHealthy("ng1"))
+	assert.True(t, clusterstate.IsNodeGroupHealthy(provider.GetNodeGroup("ng1")))
 	assert.Equal(t, NodeGroupScalingSafety{
 		SafeToScale: false,
 		Healthy:     true,
@@ -991,7 +991,7 @@ func TestScaleUpBackoff(t *testing.T) {
 	err = clusterstate.UpdateNodes([]*apiv1.Node{ng1_1, ng1_2, ng1_3, ng1_4}, nil, now)
 	assert.NoError(t, err)
 	assert.True(t, clusterstate.IsClusterHealthy())
-	assert.True(t, clusterstate.IsNodeGroupHealthy("ng1"))
+	assert.True(t, clusterstate.IsNodeGroupHealthy(provider.GetNodeGroup("ng1")))
 	assert.Equal(t, NodeGroupScalingSafety{SafeToScale: true, Healthy: true}, clusterstate.IsNodeGroupSafeToScaleUp(ng1, now))
 	assert.Equal(t, backoff.Status{IsBackedOff: false}, clusterstate.backoff.BackoffStatus(ng1, nil, now))
 }

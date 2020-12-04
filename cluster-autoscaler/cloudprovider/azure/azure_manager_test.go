@@ -575,7 +575,7 @@ func TestFetchExplicitNodeGroups(t *testing.T) {
 	min, max, name := 1, 15, "test-asg"
 	ngdo := cloudprovider.NodeGroupDiscoveryOptions{
 		NodeGroupSpecs: []string{
-			fmt.Sprintf("%d:%d:%s", min, max, name),
+			fmt.Sprintf("%d:%d:%s:%s", min, max, cloudprovider.Delete, name),
 		},
 	}
 

@@ -21,6 +21,7 @@ import (
 	"io"
 
 	"k8s.io/apimachinery/pkg/util/yaml"
+	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/klog/v2"
 )
 
@@ -73,6 +74,15 @@ func BuildConfig(reader io.Reader) (*Config, error) {
 
 	klog.V(4).Infof("nodeGroups=%v, autoScalerProfile=%v", config.NodeGroups, config.AutoScalerProfile)
 
+	var modifiedNg []NodeGroupSpec
+	for _, spec := range config.NodeGroups {
+		localSpec := spec
+		if spec.ScaleDownPolicy == "" {
+			localSpec.ScaleDownPolicy = cloudprovider.Delete
+		}
+		modifiedNg = append(modifiedNg, localSpec)
+	}
+	config.NodeGroups = modifiedNg
 	if err := config.validate(); err != nil {
 		return nil, fmt.Errorf("error while validating config: %v", err)
 	}
@@ -106,6 +116,9 @@ func (c Config) validate() error {
 		}
 		if g.MaxSize < g.MinSize {
 			return fmt.Errorf("invalid nodeGroup: %s, max size must be greater or equal to min size", g.Name)
+		}
+		if g.ScaleDownPolicy != cloudprovider.Delete && g.ScaleDownPolicy != cloudprovider.Deallocate {
+			return fmt.Errorf("invalid scaledown policy: %s. Valid values are: Delete, Deallocate", g.ScaleDownPolicy)
 		}
 	}
 	return nil

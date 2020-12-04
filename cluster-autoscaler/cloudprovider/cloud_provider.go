@@ -236,6 +236,23 @@ type NodeGroup interface {
 	GetOptions(defaults config.NodeGroupAutoscalingOptions) (*config.NodeGroupAutoscalingOptions, error)
 }
 
+// PolicyNodeGroup is a wrapper for a nodegroup that can have scaling policies
+type PolicyNodeGroup interface {
+	// ScaleDownPolicy returns whether this nodegroup instances will be deleted or deallocated on scale down
+	ScaleDownPolicy() ScaleDownPolicy
+}
+
+// ScaleDownPolicy is a string representation of the ScaleDownPolicy
+type ScaleDownPolicy string
+
+const (
+	// Delete means that on scale down, nodes will be deleted
+	Delete     ScaleDownPolicy = "Delete"
+	// Deallocate means that on scale down, nodes will be deallocated and on scale-up they will
+	// be attempted to be started first
+	Deallocate ScaleDownPolicy = "Deallocate"
+)
+
 // Instance represents a cloud-provider node. The node does not necessarily map to k8s node
 // i.e it does not have to be registered in k8s cluster despite being returned by NodeGroup.Nodes()
 // method. Also it is sane to have Instance object for nodes which are being created or deleted.
@@ -263,9 +280,30 @@ const (
 	InstanceRunning InstanceState = 1
 	// InstanceCreating means instance is being created
 	InstanceCreating InstanceState = 2
+	// InstanceFailed means instance has a failed provisioning state
+	InstanceFailed InstanceState = 3
 	// InstanceDeleting means instance is being deleted
-	InstanceDeleting InstanceState = 3
+	InstanceDeleting InstanceState = 4
+	// InstanceDeallocated means that the instance is deallocated
+	InstanceDeallocated InstanceState = 5
 )
+
+func (s InstanceState) String() string {
+	switch s {
+	case InstanceRunning:
+		return "Running"
+	case InstanceCreating:
+		return "Creating"
+	case InstanceFailed:
+		return "Failed"
+	case InstanceDeleting:
+		return "Deleting"
+	case InstanceDeallocated:
+		return "Deallocated"
+	default:
+		return fmt.Sprintf("%d", s)
+	}
+}
 
 // InstanceErrorInfo provides information about error condition on instance
 type InstanceErrorInfo struct {
@@ -339,6 +377,20 @@ func IsCustomResource(resourceName string) bool {
 func ContainsCustomResources(resources []string) bool {
 	for _, resource := range resources {
 		if IsCustomResource(resource) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsAnyNodeGroupInDeallocationMode returns true iff any nodegroup in the list is of Deallocate policy
+func IsAnyNodeGroupInDeallocationMode(ngs []NodeGroup) bool {
+	for _, ng := range ngs {
+		policyNg, ok := ng.(PolicyNodeGroup)
+		if !ok {
+			return false
+		}
+		if policyNg.ScaleDownPolicy() == Deallocate {
 			return true
 		}
 	}
