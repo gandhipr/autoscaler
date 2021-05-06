@@ -244,7 +244,7 @@ func decodePkcs12(pkcs []byte, password string) (*x509.Certificate, *rsa.Private
 }
 
 func getUserAgentExtension() string {
-	return fmt.Sprintf("cluster-autoscaler/v%s", version.ClusterAutoscalerVersion)
+	return fmt.Sprintf("cluster-autoscaler-aks/v%s", version.ClusterAutoscalerVersion)
 }
 
 func configureUserAgent(client *autorest.Client) {
