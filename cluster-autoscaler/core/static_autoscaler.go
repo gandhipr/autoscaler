@@ -437,6 +437,21 @@ func (a *StaticAutoscaler) RunOnce(currentTime time.Time) (typedErr errors.Autos
 		}
 	}()
 
+	// Before we proceed further, ensure that the minCount
+	// for all nodeGroups is satisfied
+	// This will issue a scale up for any nodegroup that's below the MinCount
+	scaledUp, typedErr := a.enforceNodeGroupsMinCount()
+	if typedErr != nil {
+		klog.Errorf("failed to enforce minimum count for nodegroups: %v", typedErr)
+		scaleUpStatus.Result = status.ScaleUpError
+		return nil
+	}
+	if scaledUp {
+		klog.V(3).Info("Adjusted some nodegroups to meet the minimum count, skipping iteration")
+		scaleUpStatus.Result = status.ScaleUpSuccessful
+		return nil
+	}
+
 	// Check if there are any nodes that failed to register in Kubernetes
 	// master.
 	unregisteredNodes := a.clusterStateRegistry.GetUnregisteredNodes()
@@ -834,6 +849,32 @@ func (a *StaticAutoscaler) removeOldUnregisteredNodes(allUnregisteredNodes []clu
 		removedAny = true
 	}
 	return removedAny, nil
+}
+func (a *StaticAutoscaler) enforceNodeGroupsMinCount() (bool, errors.AutoscalerError) {
+	var scaledUp bool
+	for _, group := range a.CloudProvider.NodeGroups() {
+		targetSize, err := group.TargetSize()
+		if err != nil {
+			return scaledUp, errors.NewAutoscalerError(errors.CloudProviderError, "error while retrieving target size for group %s: %v", group.Id(), err)
+		}
+
+		now := time.Now()
+		if targetSize != -1 && targetSize < group.MinSize() && a.clusterStateRegistry.IsNodeGroupSafeToScaleUp(group, now) {
+			delta := group.MinSize() - targetSize
+
+			klog.V(3).Infof("Nodegroup %s has target instance count of %d which is below the minimum count %d"+
+				", will increase size by: %d", group.Id(), targetSize, group.MinSize(), delta)
+			if err := group.IncreaseSize(delta); err != nil {
+				a.AutoscalingContext.LogRecorder.Eventf(apiv1.EventTypeWarning, "FailedToScaleUpGroup", "Scale-up failed for group %s: %v", group.Id(), err)
+				aerr := errors.ToAutoscalerError(errors.CloudProviderError, err).AddPrefix("failed to enforce minimum node count for node group %s: %v", group.Id(), err)
+				a.clusterStateRegistry.RegisterFailedScaleUp(group, metrics.FailedScaleUpReason(aerr.Type()), now)
+				return scaledUp, aerr
+			}
+			a.AutoscalingContext.LogRecorder.Eventf(apiv1.EventTypeNormal, "ScaledUpGroup", "Scale-up: setting group %s size to %d", group.Id(), group.MinSize())
+			scaledUp = true
+		}
+	}
+	return scaledUp, nil
 }
 
 func toNodes(unregisteredNodes []clusterstate.UnregisteredNode) []*apiv1.Node {
