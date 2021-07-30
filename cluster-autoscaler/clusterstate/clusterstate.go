@@ -30,6 +30,7 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/metrics"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/nodegroupconfig"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/backoff"
+	utils_errors "k8s.io/autoscaler/cluster-autoscaler/utils/errors"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/gpu"
 	kube_util "k8s.io/autoscaler/cluster-autoscaler/utils/kubernetes"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/taints"
@@ -37,9 +38,8 @@ import (
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
-	schedulerframework "k8s.io/kubernetes/pkg/scheduler/framework"
-
 	klog "k8s.io/klog/v2"
+	schedulerframework "k8s.io/kubernetes/pkg/scheduler/framework"
 )
 
 const (
@@ -108,7 +108,7 @@ type UnregisteredNode struct {
 // ScaleUpFailure contains information about a failure of a scale-up.
 type ScaleUpFailure struct {
 	NodeGroup cloudprovider.NodeGroup
-	Reason    metrics.FailedScaleUpReason
+	Type      utils_errors.AutoscalerErrorType
 	Time      time.Time
 }
 
@@ -275,6 +275,7 @@ func (csr *ClusterStateRegistry) updateScaleRequests(currentTime time.Time) {
 			csr.logRecorder.Eventf(apiv1.EventTypeWarning, "ScaleUpTimedOut",
 				"Nodes added to group %s failed to register within %v",
 				scaleUpRequest.NodeGroup.Id(), currentTime.Sub(scaleUpRequest.Time))
+
 			availableGPUTypes := csr.cloudProvider.GetAvailableGPUTypes()
 			gpuResource, gpuType := "", ""
 			nodeInfo, err := scaleUpRequest.NodeGroup.TemplateNodeInfo()
@@ -283,11 +284,16 @@ func (csr *ClusterStateRegistry) updateScaleRequests(currentTime time.Time) {
 			} else {
 				gpuResource, gpuType = gpu.GetGpuInfoForMetrics(csr.cloudProvider.GetNodeGpuConfig(nodeInfo.Node()), availableGPUTypes, nodeInfo.Node(), scaleUpRequest.NodeGroup)
 			}
-			csr.registerFailedScaleUpNoLock(scaleUpRequest.NodeGroup, metrics.Timeout, cloudprovider.InstanceErrorInfo{
-				ErrorClass:   cloudprovider.OtherErrorClass,
-				ErrorCode:    "timeout",
-				ErrorMessage: fmt.Sprintf("Scale-up timed out for node group %v after %v", nodeGroupName, currentTime.Sub(scaleUpRequest.Time)),
-			}, gpuResource, gpuType, currentTime)
+
+			csr.registerFailedScaleUpNoLock(scaleUpRequest.NodeGroup,
+				utils_errors.NewAutoscalerErrorWithReason(utils_errors.Timeout, utils_errors.NodeRegistration,
+					"Nodes added to group %s failed to register within %v",
+					scaleUpRequest.NodeGroup.Id(), currentTime.Sub(scaleUpRequest.Time)),
+				cloudprovider.InstanceErrorInfo{
+					ErrorClass:   cloudprovider.OtherErrorClass,
+					ErrorCode:    string(utils_errors.Timeout),
+					ErrorMessage: fmt.Sprintf("Scale-up timed out for node group %v after %v", nodeGroupName, currentTime.Sub(scaleUpRequest.Time)),
+				}, gpuResource, gpuType, currentTime)
 			delete(csr.scaleUpRequests, nodeGroupName)
 		}
 	}
@@ -311,19 +317,22 @@ func (csr *ClusterStateRegistry) backoffNodeGroup(nodeGroup cloudprovider.NodeGr
 // RegisterFailedScaleUp should be called after getting error from cloudprovider
 // when trying to scale-up node group. It will mark this group as not safe to autoscale
 // for some time.
-func (csr *ClusterStateRegistry) RegisterFailedScaleUp(nodeGroup cloudprovider.NodeGroup, reason metrics.FailedScaleUpReason, errorMessage, gpuResourceName, gpuType string, currentTime time.Time) {
+func (csr *ClusterStateRegistry) RegisterFailedScaleUp(nodeGroup cloudprovider.NodeGroup, autoScalerError utils_errors.AutoscalerError,
+	gpuResourceName, gpuType string, currentTime time.Time) {
 	csr.Lock()
 	defer csr.Unlock()
-	csr.registerFailedScaleUpNoLock(nodeGroup, reason, cloudprovider.InstanceErrorInfo{
-		ErrorClass:   cloudprovider.OtherErrorClass,
-		ErrorCode:    string(reason),
-		ErrorMessage: errorMessage,
-	}, gpuResourceName, gpuType, currentTime)
+	csr.registerFailedScaleUpNoLock(nodeGroup, autoScalerError,
+		cloudprovider.InstanceErrorInfo{
+			ErrorClass:   cloudprovider.OtherErrorClass,
+			ErrorCode:    string(autoScalerError.Reason()),
+			ErrorMessage: autoScalerError.Error(),
+		}, gpuResourceName, gpuType, currentTime)
 }
 
-func (csr *ClusterStateRegistry) registerFailedScaleUpNoLock(nodeGroup cloudprovider.NodeGroup, reason metrics.FailedScaleUpReason, errorInfo cloudprovider.InstanceErrorInfo, gpuResourceName, gpuType string, currentTime time.Time) {
-	csr.scaleUpFailures[nodeGroup.Id()] = append(csr.scaleUpFailures[nodeGroup.Id()], ScaleUpFailure{NodeGroup: nodeGroup, Reason: reason, Time: currentTime})
-	metrics.RegisterFailedScaleUp(reason, gpuResourceName, gpuType)
+func (csr *ClusterStateRegistry) registerFailedScaleUpNoLock(nodeGroup cloudprovider.NodeGroup, autoScalerError utils_errors.AutoscalerError,
+	errorInfo cloudprovider.InstanceErrorInfo, gpuResourceName, gpuType string, currentTime time.Time) {
+	csr.scaleUpFailures[nodeGroup.Id()] = append(csr.scaleUpFailures[nodeGroup.Id()], ScaleUpFailure{NodeGroup: nodeGroup, Type: autoScalerError.Type(), Time: currentTime})
+	metrics.RegisterFailedScaleUp(autoScalerError, gpuResourceName, gpuType)
 	csr.backoffNodeGroup(nodeGroup, errorInfo, currentTime)
 }
 
@@ -1046,7 +1055,7 @@ func (csr *ClusterStateRegistry) GetUpcomingNodes() (upcomingCounts map[string]i
 			newNodes = ar.CurrentTarget - (len(readiness.Ready) + (len(readiness.Unready) - len(readiness.Deallocated)) + len(readiness.LongUnregistered))
 		}
 
-		klog.V(5).Infof("newNodes: %d, currentTarget: %d, deallocated: %d, readinessReady: %d, readinessUnready: %d, readiness.LongUnregistered: %d", newNodes, ar.CurrentTarget,len(readiness.Deallocated), len(readiness.Ready), len(readiness.Unready), len(readiness.LongUnregistered))
+		klog.V(5).Infof("newNodes: %d, currentTarget: %d, deallocated: %d, readinessReady: %d, readinessUnready: %d, readiness.LongUnregistered: %d", newNodes, ar.CurrentTarget, len(readiness.Deallocated), len(readiness.Ready), len(readiness.Unready), len(readiness.LongUnregistered))
 		if newNodes <= 0 {
 			// Negative value is unlikely but theoretically possible.
 			continue
@@ -1198,11 +1207,13 @@ func (csr *ClusterStateRegistry) handleInstanceCreationErrorsForNodeGroup(
 			// Decrease the scale up request by the number of deleted nodes
 			csr.registerOrUpdateScaleUpNoLock(nodeGroup, -len(unseenInstanceIds), currentTime)
 
-			csr.registerFailedScaleUpNoLock(nodeGroup, metrics.FailedScaleUpReason(errorCode.code), cloudprovider.InstanceErrorInfo{
-				ErrorClass:   errorCode.class,
-				ErrorCode:    errorCode.code,
-				ErrorMessage: csr.buildErrorMessageEventString(currentUniqueErrorMessagesForErrorCode[errorCode]),
-			}, gpuResource, gpuType, currentTime)
+			csr.registerFailedScaleUpNoLock(nodeGroup, utils_errors.NewAutoscalerErrorWithReason(utils_errors.AutoscalerErrorType(errorCode.code),
+				utils_errors.AutoscalerErrorReason(errorCode.code), ""),
+				cloudprovider.InstanceErrorInfo{
+					ErrorClass:   errorCode.class,
+					ErrorCode:    errorCode.code,
+					ErrorMessage: csr.buildErrorMessageEventString(currentUniqueErrorMessagesForErrorCode[errorCode]),
+				}, gpuResource, gpuType, currentTime)
 		}
 	}
 }

@@ -420,8 +420,8 @@ func (scaleSet *ScaleSet) increaseScaleSetCapacity(vmssInfo compute.VirtualMachi
 	klog.V(3).Infof("Waiting for virtualMachineScaleSetsClient.CreateOrUpdateAsync(%s)", scaleSet.Name)
 	future, rerr := scaleSet.manager.azClient.virtualMachineScaleSetsClient.CreateOrUpdateAsync(ctx, scaleSet.manager.config.ResourceGroup, scaleSet.Name, op)
 	if rerr != nil {
-		klog.Errorf("virtualMachineScaleSetsClient.CreateOrUpdate for scale set %q failed: %v", scaleSet.Name, rerr)
-		return rerr.Error()
+		klog.Errorf("virtualMachineScaleSetsClient.CreateOrUpdate for scale set %q failed: %+v", scaleSet.Name, rerr)
+		return azureToAutoscalerError(rerr)
 	}
 
 	// Proactively set the VMSS size so autoscaler makes better decisions.
@@ -492,7 +492,7 @@ func (scaleSet *ScaleSet) startInstances(instances []*azureRef) error {
 	future, rerr := scaleSet.manager.azClient.virtualMachineScaleSetsClient.StartInstancesAsync(ctx, resourceGroup, commonNg.Id(), *requiredIds)
 	scaleSet.instanceMutex.Unlock()
 	if rerr != nil {
-		klog.Errorf("virtualMachineScaleSetsClient.StartInstancesAsync for instances %v for %s failed: %v", requiredIds.InstanceIds, scaleSet.Name, rerr)
+		klog.Errorf("virtualMachineScaleSetsClient.StartInstancesAsync for instances %v for %s failed: %+v", requiredIds.InstanceIds, scaleSet.Name, rerr)
 		return rerr.Error()
 	}
 
@@ -579,8 +579,8 @@ func (scaleSet *ScaleSet) deallocateInstances(instances []*azureRef) error {
 	future, rerr := scaleSet.manager.azClient.virtualMachineScaleSetsClient.DeallocateInstancesAsync(ctx, resourceGroup, commonNg.Id(), *requiredIds)
 	scaleSet.instanceMutex.Unlock()
 	if rerr != nil {
-		klog.Errorf("virtualMachineScaleSetsClient.DeallocateInstancesAsync for instances %v for %s failed: %v", requiredIds.InstanceIds, scaleSet.Name, rerr)
-		return rerr.Error()
+		klog.Errorf("virtualMachineScaleSetsClient.DeallocateInstancesAsync for instances %v for %s failed: %+v", requiredIds.InstanceIds, scaleSet.Name, rerr)
+		return azureToAutoscalerError(rerr)
 	}
 
 	// Proactively set the status of the instances to be running in cache
@@ -668,8 +668,8 @@ func (scaleSet *ScaleSet) DeleteInstances(instances []*azureRef, hasUnregistered
 
 	scaleSet.instanceMutex.Unlock()
 	if rerr != nil {
-		klog.Errorf("virtualMachineScaleSetsClient.DeleteInstancesAsync for instances %v for %s failed: %v", requiredIds.InstanceIds, scaleSet.Name, rerr)
-		return rerr.Error()
+		klog.Errorf("virtualMachineScaleSetsClient.DeleteInstancesAsync for instances %v for %s failed: %+v", requiredIds.InstanceIds, scaleSet.Name, rerr)
+		return azureToAutoscalerError(rerr)
 	}
 
 	// Proactively decrement scale set size so that we don't

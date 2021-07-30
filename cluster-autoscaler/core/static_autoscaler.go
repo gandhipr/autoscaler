@@ -859,7 +859,8 @@ func (a *StaticAutoscaler) enforceNodeGroupsMinCount() (bool, errors.AutoscalerE
 		}
 
 		now := time.Now()
-		if targetSize != -1 && targetSize < group.MinSize() && a.clusterStateRegistry.IsNodeGroupSafeToScaleUp(group, now) {
+		isSafeToScaleUp := a.clusterStateRegistry.IsNodeGroupSafeToScaleUp(group, now)
+		if targetSize != -1 && targetSize < group.MinSize() && isSafeToScaleUp.SafeToScale {
 			delta := group.MinSize() - targetSize
 
 			klog.V(3).Infof("Nodegroup %s has target instance count of %d which is below the minimum count %d"+
@@ -867,7 +868,8 @@ func (a *StaticAutoscaler) enforceNodeGroupsMinCount() (bool, errors.AutoscalerE
 			if err := group.IncreaseSize(delta); err != nil {
 				a.AutoscalingContext.LogRecorder.Eventf(apiv1.EventTypeWarning, "FailedToScaleUpGroup", "Scale-up failed for group %s: %v", group.Id(), err)
 				aerr := errors.ToAutoscalerError(errors.CloudProviderError, err).AddPrefix("failed to enforce minimum node count for node group %s: %v", group.Id(), err)
-				a.clusterStateRegistry.RegisterFailedScaleUp(group, metrics.FailedScaleUpReason(aerr.Type()), now)
+				// current gpu specific data implementation is gke/gce specific
+				a.clusterStateRegistry.RegisterFailedScaleUp(group, aerr, "", "", now)
 				return scaledUp, aerr
 			}
 			a.AutoscalingContext.LogRecorder.Eventf(apiv1.EventTypeNormal, "ScaledUpGroup", "Scale-up: setting group %s size to %d", group.Id(), group.MinSize())

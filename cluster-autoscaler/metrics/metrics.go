@@ -34,9 +34,6 @@ import (
 // NodeScaleDownReason describes reason for removing node
 type NodeScaleDownReason string
 
-// FailedScaleUpReason describes reason of failed scale-up
-type FailedScaleUpReason string
-
 // FunctionLabel is a name of Cluster Autoscaler operation for which
 // we measure duration
 type FunctionLabel string
@@ -61,13 +58,6 @@ const (
 	Empty NodeScaleDownReason = "empty"
 	// Unready node was removed
 	Unready NodeScaleDownReason = "unready"
-
-	// CloudProviderError caused scale-up to fail
-	CloudProviderError FailedScaleUpReason = "cloudProviderError"
-	// APIError caused scale-up to fail
-	APIError FailedScaleUpReason = "apiCallError"
-	// Timeout was encountered when trying to scale-up
-	Timeout FailedScaleUpReason = "timeout"
 
 	// DirectionScaleDown is the direction of skipped scaling event when scaling in (shrinking)
 	DirectionScaleDown string = "down"
@@ -256,7 +246,7 @@ var (
 			Namespace: caNamespace,
 			Name:      "errors_total",
 			Help:      "The number of CA loops failed due to an error.",
-		}, []string{"type"},
+		}, []string{"type", "reason"},
 	)
 
 	scaleUpCount = k8smetrics.NewCounter(
@@ -280,7 +270,7 @@ var (
 			Namespace: caNamespace,
 			Name:      "failed_scale_ups_total",
 			Help:      "Number of times scale-up operation has failed.",
-		}, []string{"reason"},
+		}, []string{"type", "reason"},
 	)
 
 	failedGPUScaleUpCount = k8smetrics.NewCounterVec(
@@ -546,7 +536,7 @@ func UpdateNodeGroupTargetSize(targetSizes map[string]int) {
 // RegisterError records any errors preventing Cluster Autoscaler from working.
 // No more than one error should be recorded per loop.
 func RegisterError(err errors.AutoscalerError) {
-	errorsCount.WithLabelValues(string(err.Type())).Add(1.0)
+	errorsCount.WithLabelValues(string(err.Type()), string(err.Reason())).Add(1.0)
 }
 
 // RegisterScaleUp records number of nodes added by scale up
@@ -558,10 +548,11 @@ func RegisterScaleUp(nodesCount int, gpuResourceName, gpuType string) {
 }
 
 // RegisterFailedScaleUp records a failed scale-up operation
-func RegisterFailedScaleUp(reason FailedScaleUpReason, gpuResourceName, gpuType string) {
-	failedScaleUpCount.WithLabelValues(string(reason)).Inc()
+func RegisterFailedScaleUp(autoscalerError errors.AutoscalerError, gpuResourceName, gpuType string) {
+	failedScaleUpCount.WithLabelValues(string(autoscalerError.Type()), string(autoscalerError.Reason())).Inc()
 	if gpuType != gpu.MetricsNoGPU {
-		failedGPUScaleUpCount.WithLabelValues(string(reason), gpuResourceName, gpuType).Inc()
+		failedGPUScaleUpCount.WithLabelValues(string(autoscalerError.Type()), string(autoscalerError.Reason()),
+			gpuResourceName, gpuType).Inc()
 	}
 }
 
