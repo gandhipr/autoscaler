@@ -57,11 +57,12 @@ type ScaleSet struct {
 	azureRef
 	manager *AzureManager
 
-	minSize         int
-	maxSize         int
-	labels          map[string]string
-	taints          string
-	scaleDownPolicy cloudprovider.ScaleDownPolicy
+	minSize           int
+	maxSize           int
+	labels            map[string]string
+	taints            string
+	scaleDownPolicy   cloudprovider.ScaleDownPolicy
+	enableForceDelete bool
 
 	enableDynamicInstanceList bool
 
@@ -93,6 +94,7 @@ func NewScaleSet(spec *dynamic.NodeGroupSpec, az *AzureManager, curSize int64) (
 		sizeRefreshPeriod:         az.azureCache.refreshInterval,
 		instancesRefreshJitter:    az.config.VmssVmsCacheJitter,
 		scaleDownPolicy:           spec.ScaleDownPolicy,
+		enableForceDelete:         az.config.EnableForceDelete,
 		enableDynamicInstanceList: az.config.EnableDynamicInstanceList,
 	}
 
@@ -664,8 +666,7 @@ func (scaleSet *ScaleSet) DeleteInstances(instances []*azureRef, hasUnregistered
 	scaleSet.instanceMutex.Lock()
 
 	klog.V(3).Infof("Calling virtualMachineScaleSetsClient.DeleteInstancesAsync(%v) for %s", requiredIds.InstanceIds, scaleSet.Name)
-	future, rerr := scaleSet.manager.azClient.virtualMachineScaleSetsClient.DeleteInstancesAsync(ctx, resourceGroup, commonAsg.Id(), *requiredIds, false)
-
+	future, rerr := scaleSet.manager.azClient.virtualMachineScaleSetsClient.DeleteInstancesAsync(ctx, resourceGroup, commonAsg.Id(), *requiredIds, scaleSet.enableForceDelete)
 	scaleSet.instanceMutex.Unlock()
 	if rerr != nil {
 		klog.Errorf("virtualMachineScaleSetsClient.DeleteInstancesAsync for instances %v for %s failed: %+v", requiredIds.InstanceIds, scaleSet.Name, rerr)

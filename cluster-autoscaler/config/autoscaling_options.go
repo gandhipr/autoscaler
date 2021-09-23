@@ -283,6 +283,8 @@ type AutoscalingOptions struct {
 	DynamicNodeDeleteDelayAfterTaintEnabled bool
 	// BypassedSchedulers are used to specify which schedulers to bypass their processing
 	BypassedSchedulers map[string]bool
+	// EnableForceDelete uses force deletion on the Azure API to remove instances
+	EnableForceDelete bool
 }
 
 // KubeClientOptions specify options for kube client

@@ -45,6 +45,7 @@ type AutoScalerProfile struct {
 	SkipNodesWithLocalStorage     string `json:"skip-nodes-with-local-storage,omitempty" yaml:"skip-nodes-with-local-storage,omitempty"`
 	SkipNodesWithSystemPods       string `json:"skip-nodes-with-system-pods,omitempty" yaml:"skip-nodes-with-system-pods,omitempty"`
 	MaxNodeProvisionTime          string `json:"max-node-provision-time,omitempty" yaml:"max-node-provision-time,omitempty"`
+	EnableForceDelete             string `json:"enable-force-delete,omitempty" yaml:"enable-force-delete,omitempty"`
 	MinCpu                        string `json:"min-cpu,omitempty" yaml:"min-cpu"`
 	MaxCpu                        string `json:"max-cpu,omitempty" yaml:"max-cpu,omitempty"`
 	MinMemory                     string `json:"min-memory,omitempty" yaml:"min-memory,omitempty"`

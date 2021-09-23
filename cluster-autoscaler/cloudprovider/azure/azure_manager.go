@@ -54,7 +54,7 @@ type AzureManager struct {
 }
 
 // createAzureManagerInternal allows for a custom azClient to be passed in by tests.
-func createAzureManagerInternal(configReader io.Reader, discoveryOpts cloudprovider.NodeGroupDiscoveryOptions, azClient *azClient) (*AzureManager, error) {
+func createAzureManagerInternal(configReader io.Reader, discoveryOpts cloudprovider.NodeGroupDiscoveryOptions, autoScalingOpts config.AutoscalingOptions, azClient *azClient) (*AzureManager, error) {
 	cfg, err := BuildAzureConfig(configReader)
 	if err != nil {
 		return nil, err
@@ -68,6 +68,7 @@ func createAzureManagerInternal(configReader io.Reader, discoveryOpts cloudprovi
 			return nil, err
 		}
 	}
+	cfg.EnableForceDelete = autoScalingOpts.EnableForceDelete
 
 	klog.Infof("Starting azure manager with subscription ID %q", cfg.SubscriptionID)
 
@@ -114,8 +115,8 @@ func createAzureManagerInternal(configReader io.Reader, discoveryOpts cloudprovi
 }
 
 // CreateAzureManager creates Azure Manager object to work with Azure.
-func CreateAzureManager(configReader io.Reader, discoveryOpts cloudprovider.NodeGroupDiscoveryOptions) (*AzureManager, error) {
-	return createAzureManagerInternal(configReader, discoveryOpts, nil)
+func CreateAzureManager(configReader io.Reader, discoveryOpts cloudprovider.NodeGroupDiscoveryOptions, autoScalingOpts config.AutoscalingOptions) (*AzureManager, error) {
+	return createAzureManagerInternal(configReader, discoveryOpts, autoScalingOpts, nil)
 }
 
 func (m *AzureManager) fetchExplicitNodeGroups(specs []string) error {

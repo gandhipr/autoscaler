@@ -178,6 +178,11 @@ func (b *AutoscalerBuilderImpl) updateAutoScalerProfile(autoscalingOptions confi
 		autoscalingOptions.MaxNodeProvisionTime = maxNodeProvisionTime
 	}
 
+	if autoScalerProfile.EnableForceDelete != "" {
+		enableForceDelete, _ := strconv.ParseBool(autoScalerProfile.EnableForceDelete)
+		autoscalingOptions.EnableForceDelete = enableForceDelete
+	}
+
 	if autoScalerProfile.MinCpu != "" {
 		minCores, _ := strconv.ParseInt(autoScalerProfile.MinCpu, 10, 64)
 		autoscalingOptions.MinCoresTotal = minCores
