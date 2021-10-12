@@ -741,6 +741,30 @@ func (csr *ClusterStateRegistry) updateUnregisteredNodes(unregisteredNodes []Unr
 	csr.unregisteredNodes = result
 }
 
+// RemoveUnregisteredNodesFromList removes given nodes from the list of unregistered nodes
+func (csr *ClusterStateRegistry) RemoveUnregisteredNodesFromList(unregisteredNodesToRemove []UnregisteredNode) {
+	for _, node := range unregisteredNodesToRemove {
+		csr.RemoveUnregisteredNodeFromList(node)
+	}
+}
+
+// RemoveUnregisteredNodeFromList removes a given unregistered node from the list of unregistered nodes
+func (csr *ClusterStateRegistry) RemoveUnregisteredNodeFromList(unregisteredNodeToRemove UnregisteredNode) {
+	csr.Lock()
+	defer csr.Unlock()
+	result := make(map[string]UnregisteredNode)
+	for _, unregistered := range csr.unregisteredNodes {
+		if unregistered.Node.Name == unregisteredNodeToRemove.Node.Name {
+			klog.V(5).Infof("Removing unregistered node %s from the cluster state registry", unregistered.Node.Name)
+			continue
+		} else {
+			klog.V(5).Infof("Adding unregistered node %s to the cluster state registry", unregistered.Node.Name)
+			result[unregistered.Node.Name] = unregistered
+		}
+	}
+	csr.unregisteredNodes = result
+}
+
 // GetUnregisteredNodes returns a list of all unregistered nodes.
 func (csr *ClusterStateRegistry) GetUnregisteredNodes() []UnregisteredNode {
 	csr.Lock()

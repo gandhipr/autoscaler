@@ -817,6 +817,7 @@ func (a *StaticAutoscaler) removeOldUnregisteredNodes(allUnregisteredNodes []clu
 
 		err = nodeGroup.DeleteNodes(nodesToDelete)
 		csr.InvalidateNodeInstancesCacheEntry(nodeGroup)
+		csr.RemoveUnregisteredNodesFromList(unregisteredNodesToDelete)
 		if err != nil {
 			klog.Warningf("Failed to remove %v unregistered nodes from node group %s: %v", len(nodesToDelete), nodeGroupId, err)
 			for _, node := range nodesToDelete {
