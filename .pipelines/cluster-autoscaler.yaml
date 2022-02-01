@@ -1,0 +1,33 @@
+pr:
+- master
+- cluster-autoscaler-release-*
+
+variables:
+- name: GOPATH
+  value: $(Agent.BuildDirectory)/go
+- name: GOBIN
+  value: $(GOPATH)/bin
+- name: GO111MODULE
+  value: auto
+- name: autoscaler.clone.dir
+  value: go/src/k8s.io/autoscaler
+
+jobs:
+  - job: cluster_autoscaler_test
+    pool: staging-pool
+    displayName: Autoscaler Unit Tests
+    workspace:
+      clean: all
+    steps:
+    - checkout: self
+      path: $(autoscaler.clone.dir)
+    - script: |
+        echo '##vso[task.prependpath]$(GOPATH)/bin'
+        hack/install-verify-tools.sh
+      displayName: "Prepare"
+    - script: |
+        hack/verify-all.sh -v
+      displayName: "Verify"
+    - script: |
+        hack/for-go-proj.sh test
+      displayName: "Test"
