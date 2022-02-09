@@ -69,6 +69,7 @@ func createAzureManagerInternal(configReader io.Reader, discoveryOpts cloudprovi
 		}
 	}
 	cfg.EnableForceDelete = autoScalingOpts.EnableForceDelete
+	cfg.EnableDynamicInstanceList = autoScalingOpts.EnableDynamicInstanceList
 
 	klog.Infof("Starting azure manager with subscription ID %q", cfg.SubscriptionID)
 

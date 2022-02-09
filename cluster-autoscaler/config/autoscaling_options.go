@@ -285,6 +285,8 @@ type AutoscalingOptions struct {
 	BypassedSchedulers map[string]bool
 	// EnableForceDelete uses force deletion on the Azure API to remove instances
 	EnableForceDelete bool
+	// EnableDynamicInstanceList enables dynamic instance workflow for vmss check
+	EnableDynamicInstanceList bool
 }
 
 // KubeClientOptions specify options for kube client

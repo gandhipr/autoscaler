@@ -57,13 +57,12 @@ type ScaleSet struct {
 	azureRef
 	manager *AzureManager
 
-	minSize           int
-	maxSize           int
-	labels            map[string]string
-	taints            string
-	scaleDownPolicy   cloudprovider.ScaleDownPolicy
-	enableForceDelete bool
-
+	minSize                   int
+	maxSize                   int
+	labels                    map[string]string
+	taints                    string
+	scaleDownPolicy           cloudprovider.ScaleDownPolicy
+	enableForceDelete         bool
 	enableDynamicInstanceList bool
 
 	sizeMutex         sync.Mutex
@@ -85,6 +84,7 @@ func NewScaleSet(spec *dynamic.NodeGroupSpec, az *AzureManager, curSize int64) (
 		azureRef: azureRef{
 			Name: spec.Name,
 		},
+
 		minSize:                   spec.MinSize,
 		maxSize:                   spec.MaxSize,
 		labels:                    spec.Labels,

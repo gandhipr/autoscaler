@@ -183,6 +183,11 @@ func (b *AutoscalerBuilderImpl) updateAutoScalerProfile(autoscalingOptions confi
 		autoscalingOptions.EnableForceDelete = enableForceDelete
 	}
 
+	if autoScalerProfile.EnableDynamicInstanceList != "" {
+		enableDynamicInstanceList, _ := strconv.ParseBool(autoScalerProfile.EnableDynamicInstanceList)
+		autoscalingOptions.EnableDynamicInstanceList = enableDynamicInstanceList
+	}
+
 	if autoScalerProfile.MinCpu != "" {
 		minCores, _ := strconv.ParseInt(autoScalerProfile.MinCpu, 10, 64)
 		autoscalingOptions.MinCoresTotal = minCores
