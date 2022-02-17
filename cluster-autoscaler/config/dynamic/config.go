@@ -28,29 +28,31 @@ import (
 // AutoScalerProfile holds the configurable autoscaler parameters via managed cluster API
 // Empty or non-existent indicates letting CA handle the default
 type AutoScalerProfile struct {
-	ScanInterval                  string `json:"scan-interval,omitempty" yaml:"scan-interval,omitempty"`
-	ScaleDownDelayAfterAdd        string `json:"scale-down-delay-after-add,omitempty" yaml:"scale-down-delay-after-add,omitempty"`
-	ScaleDownDelayAfterDelete     string `json:"scale-down-delay-after-delete,omitempty" yaml:"scale-down-delay-after-delete,omitempty"`
-	ScaleDownDelayAfterFailure    string `json:"scale-down-delay-after-failure,omitempty" yaml:"scale-down-delay-after-failure,omitempty"`
-	ScaleDownUnneededTime         string `json:"scale-down-unneeded-time,omitempty" yaml:"scale-down-unneeded-time,omitempty"`
-	ScaleDownUnreadyTime          string `json:"scale-down-unready-time,omitempty" yaml:"scale-down-unready-time,omitempty"`
-	ScaleDownUtilizationThreshold string `json:"scale-down-utilization-threshold,omitempty" yaml:"scale-down-utilization-threshold,omitempty"`
-	MaxGracefulTerminationSec     string `json:"max-graceful-termination-sec,omitempty" yaml:"max-graceful-termination-sec,omitempty"`
-	BalanceSimilarNodeGroups      string `json:"balance-similar-node-groups,omitempty" yaml:"balance-similar-node-groups,omitempty"`
-	Expander                      string `json:"expander,omitempty" yaml:"expander,omitempty"`
-	NewPodScaleUpDelay            string `json:"new-pod-scale-up-delay,omitempty" yaml:"new-pod-scale-up-delay,omitempty"`
-	MaxEmptyBulkDelete            string `json:"max-empty-bulk-delete,omitempty" yaml:"max-empty-bulk-delete,omitempty"`
-	OkTotalUnreadyCount           string `json:"ok-total-unready-count,omitempty" yaml:"ok-total-unready-count,omitempty"`
-	MaxTotalUnreadyPercentage     string `json:"max-total-unready-percentage,omitempty" yaml:"max-total-unready-percentage,omitempty"`
-	SkipNodesWithLocalStorage     string `json:"skip-nodes-with-local-storage,omitempty" yaml:"skip-nodes-with-local-storage,omitempty"`
-	SkipNodesWithSystemPods       string `json:"skip-nodes-with-system-pods,omitempty" yaml:"skip-nodes-with-system-pods,omitempty"`
-	MaxNodeProvisionTime          string `json:"max-node-provision-time,omitempty" yaml:"max-node-provision-time,omitempty"`
-	EnableForceDelete             string `json:"enable-force-delete,omitempty" yaml:"enable-force-delete,omitempty"`
-	EnableDynamicInstanceList     string `json:"enable-dynamic-instance-list,omitempty" yaml:"enable-dynamic-instance-list,omitempty"`
-	MinCpu                        string `json:"min-cpu,omitempty" yaml:"min-cpu"`
-	MaxCpu                        string `json:"max-cpu,omitempty" yaml:"max-cpu,omitempty"`
-	MinMemory                     string `json:"min-memory,omitempty" yaml:"min-memory,omitempty"`
-	MaxMemory                     string `json:"max-memory,omitempty" yaml:"max-memory,omitempty"`
+	ScanInterval                     string `json:"scan-interval,omitempty" yaml:"scan-interval,omitempty"`
+	ScaleDownDelayAfterAdd           string `json:"scale-down-delay-after-add,omitempty" yaml:"scale-down-delay-after-add,omitempty"`
+	ScaleDownDelayAfterDelete        string `json:"scale-down-delay-after-delete,omitempty" yaml:"scale-down-delay-after-delete,omitempty"`
+	ScaleDownDelayAfterFailure       string `json:"scale-down-delay-after-failure,omitempty" yaml:"scale-down-delay-after-failure,omitempty"`
+	ScaleDownUnneededTime            string `json:"scale-down-unneeded-time,omitempty" yaml:"scale-down-unneeded-time,omitempty"`
+	ScaleDownUnreadyTime             string `json:"scale-down-unready-time,omitempty" yaml:"scale-down-unready-time,omitempty"`
+	ScaleDownUtilizationThreshold    string `json:"scale-down-utilization-threshold,omitempty" yaml:"scale-down-utilization-threshold,omitempty"`
+	MaxGracefulTerminationSec        string `json:"max-graceful-termination-sec,omitempty" yaml:"max-graceful-termination-sec,omitempty"`
+	BalanceSimilarNodeGroups         string `json:"balance-similar-node-groups,omitempty" yaml:"balance-similar-node-groups,omitempty"`
+	Expander                         string `json:"expander,omitempty" yaml:"expander,omitempty"`
+	NewPodScaleUpDelay               string `json:"new-pod-scale-up-delay,omitempty" yaml:"new-pod-scale-up-delay,omitempty"`
+	MaxEmptyBulkDelete               string `json:"max-empty-bulk-delete,omitempty" yaml:"max-empty-bulk-delete,omitempty"`
+	OkTotalUnreadyCount              string `json:"ok-total-unready-count,omitempty" yaml:"ok-total-unready-count,omitempty"`
+	MaxTotalUnreadyPercentage        string `json:"max-total-unready-percentage,omitempty" yaml:"max-total-unready-percentage,omitempty"`
+	SkipNodesWithLocalStorage        string `json:"skip-nodes-with-local-storage,omitempty" yaml:"skip-nodes-with-local-storage,omitempty"`
+	SkipNodesWithSystemPods          string `json:"skip-nodes-with-system-pods,omitempty" yaml:"skip-nodes-with-system-pods,omitempty"`
+	MaxNodeProvisionTime             string `json:"max-node-provision-time,omitempty" yaml:"max-node-provision-time,omitempty"`
+	EnableForceDelete                string `json:"enable-force-delete,omitempty" yaml:"enable-force-delete,omitempty"`
+	EnableDynamicInstanceList        string `json:"enable-dynamic-instance-list,omitempty" yaml:"enable-dynamic-instance-list,omitempty"`
+	MinCpu                           string `json:"min-cpu,omitempty" yaml:"min-cpu"`
+	MaxCpu                           string `json:"max-cpu,omitempty" yaml:"max-cpu,omitempty"`
+	MinMemory                        string `json:"min-memory,omitempty" yaml:"min-memory,omitempty"`
+	MaxMemory                        string `json:"max-memory,omitempty" yaml:"max-memory,omitempty"`
+	MaxNodesTotal                    string `json:"max-nodes-total,omitempty" yaml:"max-nodes-total,omitempty"`
+	MaxCloudProviderNodeDeletionTime string `json:"max-cloud-provider-node-deletion-time,omitempty" yaml:"max-cloud-provider-node-deletion-time,omitempty"`
 }
 
 // Config holds the dynamic configuration of autoscaler which can be refreshed at runtime

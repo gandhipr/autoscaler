@@ -132,6 +132,11 @@ type AutoscalingOptions struct {
 	// This field is optional and could be nil.
 	// DrainPriorityConfig takes higher precedence and MaxGracefulTerminationSec will not be applicable when the DrainPriorityConfig is set.
 	DrainPriorityConfig []kubelet_config.ShutdownGracePeriodByPodPriority
+	// MaxCloudProviderNodeDeletionTime is the maximum time needed by cloud provider to delete a node
+	MaxCloudProviderNodeDeletionTime time.Duration
+	// MaxKubernetesEmptyNodeDeletionTime is the maximum time needed by Kubernetes to delete an empty node
+	MaxKubernetesEmptyNodeDeletionTime time.Duration
+	//  Maximum time CA waits for node to be provisioned
 	//  MaxNodeProvisionTime defines maximum time CA waits for node to be provisioned
 	MaxNodeProvisionTime time.Duration
 	// MaxTotalUnreadyPercentage is the maximum percentage of unready nodes after which CA halts operations

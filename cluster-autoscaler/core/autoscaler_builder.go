@@ -173,6 +173,11 @@ func (b *AutoscalerBuilderImpl) updateAutoScalerProfile(autoscalingOptions confi
 		autoscalingOptions.NodeGroupDefaults.ScaleDownUnreadyTime = scaleDownUnreadyTime
 	}
 
+	if autoScalerProfile.MaxCloudProviderNodeDeletionTime != "" {
+		maxCloudProviderNodeDeletionTime, _ := time.ParseDuration(autoScalerProfile.MaxCloudProviderNodeDeletionTime)
+		autoscalingOptions.MaxCloudProviderNodeDeletionTime = maxCloudProviderNodeDeletionTime
+	}
+
 	if autoScalerProfile.MaxNodeProvisionTime != "" {
 		maxNodeProvisionTime, _ := time.ParseDuration(autoScalerProfile.MaxNodeProvisionTime)
 		autoscalingOptions.MaxNodeProvisionTime = maxNodeProvisionTime
