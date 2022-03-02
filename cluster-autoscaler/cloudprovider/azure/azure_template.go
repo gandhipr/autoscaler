@@ -36,7 +36,33 @@ import (
 )
 
 const (
-	azureDiskTopologyKey string = "topology.disk.csi.azure.com/zone"
+	azureDiskTopologyKey = "topology.disk.csi.azure.com/zone"
+	// For NP-series SKU, the xilinx device plugin uses that resource name
+	// https://github.com/Xilinx/FPGA_as_a_Service/tree/master/k8s-fpga-device-plugin
+	xilinxFpgaResourceName = "xilinx.com/fpga-xilinx_u250_gen3x16_xdma_shell_2_1-0"
+
+	// legacyPoolNameTag is the legacy tag that AKS adds to the VMSS with its value
+	// being the agentpool name
+	legacyPoolNameTag = "poolName"
+	// poolNameTag is the new tag that replaces the above one
+	// Newly created pools and clusters will have this one on the VMSS
+	// instead of the legacy one. We'll have to live with both tags for a while.
+	poolNameTag = "aks-managed-poolName"
+
+	// This is the legacy label is added by agentbaker, agentpool={poolName} and we want to predict that
+	// a node added to this agentpool will have this as a node label. The value is fetched
+	// from the VMSS tag with key poolNameTag/legacyPoolNameTag
+	legacyAgentPoolNodeLabel = "agentpool"
+	// New label that replaces the above
+	agentPoolNodeLabel = "kubernetes.azure.com/agentpool"
+
+	// Storage profile node labels
+	legacyStorageProfileNodeLabel = "storageprofile"
+	storageProfileNodeLabel       = "kubernetes.azure.com/storageprofile"
+
+	// Storage tier node labels
+	legacyStorageTierNodeLabel = "storagetier"
+	storageTierNodeLabel       = "kubernetes.azure.com/storagetier"
 )
 
 func buildNodeFromTemplate(nodeGroupName string, inputLabels map[string]string, inputTaints string,
@@ -90,7 +116,9 @@ func buildNodeFromTemplate(nodeGroupName string, inputLabels map[string]string, 
 	node.Status.Capacity[apiv1.ResourceCPU] = *resource.NewQuantity(vcpu, resource.DecimalSI)
 	// isNPSeries returns if a SKU is an NP-series SKU
 	// SKU API reports GPUs for NP-series but it's actually FPGAs
-	if !isNPSeries(*template.Sku.Name) {
+	if isNPSeries(*template.Sku.Name) {
+		node.Status.Capacity[xilinxFpgaResourceName] = *resource.NewQuantity(gpuCount, resource.DecimalSI)
+	} else {
 		node.Status.Capacity[gpu.ResourceNvidiaGPU] = *resource.NewQuantity(gpuCount, resource.DecimalSI)
 	}
 
@@ -125,18 +153,30 @@ func buildNodeFromTemplate(nodeGroupName string, inputLabels map[string]string, 
 	}
 
 	// Add the agentpool label, its value should come from the VMSS poolName tag
-	labels["agentpool"] = node.Labels["poolName"]
+	// NOTE: The plan is for agentpool label to be deprecated in favor of the aks-prefixed one
+	// We will have to live with both labels for a while
+	if node.Labels[legacyPoolNameTag] != "" {
+		labels[legacyAgentPoolNodeLabel] = node.Labels[legacyPoolNameTag]
+		labels[agentPoolNodeLabel] = node.Labels[legacyPoolNameTag]
+	}
+	if node.Labels[poolNameTag] != "" {
+		labels[legacyAgentPoolNodeLabel] = node.Labels[poolNameTag]
+		labels[agentPoolNodeLabel] = node.Labels[poolNameTag]
+	}
 
 	// Add the storage profile and storage tier labels
 	if template.VirtualMachineProfile != nil && template.VirtualMachineProfile.StorageProfile != nil && template.VirtualMachineProfile.StorageProfile.OsDisk != nil {
 		// ephemeral
 		if template.VirtualMachineProfile.StorageProfile.OsDisk.DiffDiskSettings != nil && template.VirtualMachineProfile.StorageProfile.OsDisk.DiffDiskSettings.Option == compute.Local {
-			labels["storageprofile"] = "ephemeral"
+			labels[legacyStorageProfileNodeLabel] = "ephemeral"
+			labels[storageProfileNodeLabel] = "ephemeral"
 		} else {
-			labels["storageprofile"] = "managed"
+			labels[legacyStorageProfileNodeLabel] = "managed"
+			labels[storageProfileNodeLabel] = "managed"
 		}
 		if template.VirtualMachineProfile.StorageProfile.OsDisk.ManagedDisk != nil {
-			labels["storagetier"] = string(template.VirtualMachineProfile.StorageProfile.OsDisk.ManagedDisk.StorageAccountType)
+			labels[legacyStorageTierNodeLabel] = string(template.VirtualMachineProfile.StorageProfile.OsDisk.ManagedDisk.StorageAccountType)
+			labels[storageTierNodeLabel] = string(template.VirtualMachineProfile.StorageProfile.OsDisk.ManagedDisk.StorageAccountType)
 		}
 		// Add ephemeral-storage value
 		if template.VirtualMachineProfile.StorageProfile.OsDisk.DiskSizeGB != nil {
@@ -150,6 +190,7 @@ func buildNodeFromTemplate(nodeGroupName string, inputLabels map[string]string, 
 	// label so that CA makes better decision when scaling from zero for GPU pools
 	if isNvidiaEnabledSKU(*template.Sku.Name) {
 		labels[GPULabel] = "nvidia"
+		labels[legacyGPULabel] = "nvidia"
 	}
 
 	// Extract allocatables from tags
