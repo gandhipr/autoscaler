@@ -179,13 +179,14 @@ func (scaleSet *ScaleSet) getCurSize() (int64, error) {
 		return -1, err
 	}
 
-	// If VMSS state is updating, return the currentSize which would've been proactively incremented or decremented by CA
-	// unless it's -1. In that case, its better to initialize it.
-	if scaleSet.curSize != -1 && set.VirtualMachineScaleSetProperties != nil &&
-		strings.EqualFold(to.String(set.VirtualMachineScaleSetProperties.ProvisioningState), string(compute.GalleryProvisioningStateUpdating)) {
-		klog.V(3).Infof("VMSS %q is in updating state, returning cached size: %d", scaleSet.Name, scaleSet.curSize)
-		return scaleSet.curSize, nil
-	}
+	// // Remove check for returning in-memory size when VMSS is in updating state
+	// // If VMSS state is updating, return the currentSize which would've been proactively incremented or decremented by CA
+	// // unless it's -1. In that case, its better to initialize it.
+	// if scaleSet.curSize != -1 && set.VirtualMachineScaleSetProperties != nil &&
+	// 	strings.EqualFold(to.String(set.VirtualMachineScaleSetProperties.ProvisioningState), string(compute.GalleryProvisioningStateUpdating)) {
+	// 	klog.V(3).Infof("VMSS %q is in updating state, returning cached size: %d", scaleSet.Name, scaleSet.curSize)
+	// 	return scaleSet.curSize, nil
+	// }
 
 	vmssSizeMutex.Lock()
 	curSize := *set.Sku.Capacity
