@@ -249,6 +249,16 @@ func (b *AutoscalerBuilderImpl) updateAutoScalerProfile(autoscalingOptions confi
 		autoscalingOptions.MaxTotalUnreadyPercentage = maxTotalUnreadyPercentage
 	}
 
+	if autoScalerProfile.DaemonSetEvictionForEmptyNodes != "" {
+		daemonSetEvictionForEmptyNodes, _ := strconv.ParseBool(autoScalerProfile.DaemonSetEvictionForEmptyNodes)
+		autoscalingOptions.DaemonSetEvictionForEmptyNodes = daemonSetEvictionForEmptyNodes
+	}
+
+	if autoScalerProfile.DaemonSetEvictionForOccupiedNodes != "" {
+		daemonSetEvictionForOccupiedNodes, _ := strconv.ParseBool(autoScalerProfile.DaemonSetEvictionForOccupiedNodes)
+		autoscalingOptions.DaemonSetEvictionForOccupiedNodes = daemonSetEvictionForOccupiedNodes
+	}
+
 	if autoScalerProfile.SkipNodesWithLocalStorage != "" {
 		flag.Set("skip-nodes-with-local-storage", autoScalerProfile.SkipNodesWithLocalStorage)
 	}
