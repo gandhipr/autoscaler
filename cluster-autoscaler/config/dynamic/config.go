@@ -45,6 +45,8 @@ type AutoScalerProfile struct {
 	SkipNodesWithLocalStorage         string `json:"skip-nodes-with-local-storage,omitempty" yaml:"skip-nodes-with-local-storage,omitempty"`
 	SkipNodesWithSystemPods           string `json:"skip-nodes-with-system-pods,omitempty" yaml:"skip-nodes-with-system-pods,omitempty"`
 	MaxNodeProvisionTime              string `json:"max-node-provision-time,omitempty" yaml:"max-node-provision-time,omitempty"`
+	EnableGetVmss                     string `json:"enable-get-vmss,omitempty" yaml:"enable-get-vmss,omitempty"`
+	GetVmssSizeRefreshPeriod          string `json:"get-vmss-size-refresh-period,omitempty" yaml:"get-vmss-size-refresh-period,omitempty"`
 	EnableForceDelete                 string `json:"enable-force-delete,omitempty" yaml:"enable-force-delete,omitempty"`
 	EnableDynamicInstanceList         string `json:"enable-dynamic-instance-list,omitempty" yaml:"enable-dynamic-instance-list,omitempty"`
 	MinCpu                            string `json:"min-cpu,omitempty" yaml:"min-cpu"`

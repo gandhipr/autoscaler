@@ -183,6 +183,16 @@ func (b *AutoscalerBuilderImpl) updateAutoScalerProfile(autoscalingOptions confi
 		autoscalingOptions.MaxNodeProvisionTime = maxNodeProvisionTime
 	}
 
+	if autoScalerProfile.EnableGetVmss != "" {
+		enableGetVmss, _ := strconv.ParseBool(autoScalerProfile.EnableGetVmss)
+		autoscalingOptions.EnableGetVmss = enableGetVmss
+	}
+
+	if autoScalerProfile.GetVmssSizeRefreshPeriod != "" {
+		getVmssSizeRefreshPeriod, _ := time.ParseDuration(autoScalerProfile.GetVmssSizeRefreshPeriod)
+		autoscalingOptions.GetVmssSizeRefreshPeriod = getVmssSizeRefreshPeriod
+	}
+	
 	if autoScalerProfile.EnableForceDelete != "" {
 		enableForceDelete, _ := strconv.ParseBool(autoScalerProfile.EnableForceDelete)
 		autoscalingOptions.EnableForceDelete = enableForceDelete

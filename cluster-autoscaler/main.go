@@ -257,6 +257,8 @@ var (
 	configPath                = flag.String("config-path", "", "The path for the mounted ConfigMap containing the settings used for dynamic reconfiguration. Set as empty string to use static mode.")
 	enableForceDelete         = flag.Bool("enable-force-delete", false, "Whether to enable force deletion")
 	enableDynamicInstanceList = flag.Bool("enable-dynamic-instance-list", false, "Whether to enable dynamic instance list workflow")
+	enableGetVmss             = flag.Bool("enable-get-vmss", false, "Whether to enable Get VMSS calls")
+	getVmssSizeRefreshPeriod  = flag.Duration("get-vmss-size-refresh-period", 30*time.Second, "TTL for the GET VMSS cache")
 )
 
 func isFlagPassed(name string) bool {
@@ -431,6 +433,8 @@ func createAutoscalingOptions() config.AutoscalingOptions {
 		BypassedSchedulers:                      scheduler_util.GetBypassedSchedulersMap(*bypassedSchedulers),
 		EnableForceDelete:                       *enableForceDelete,
 		EnableDynamicInstanceList:               *enableDynamicInstanceList,
+		EnableGetVmss:                           *enableGetVmss,
+		GetVmssSizeRefreshPeriod:                *getVmssSizeRefreshPeriod,
 	}
 }
 

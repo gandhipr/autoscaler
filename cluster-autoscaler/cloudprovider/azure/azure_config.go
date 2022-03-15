@@ -136,6 +136,13 @@ type Config struct {
 	EnableVmssFlex bool `json:"enableVmssFlex,omitempty" yaml:"enableVmssFlex,omitempty"`
 	// EnableForceDelete defines whether to enable force deletion on the APIs
 	EnableForceDelete bool `json:"enableForceDelete,omitempty" yaml:"enableForceDelete,omitempty"`
+
+	// EnableGetVmss defines whether to enable making a call to GET VMSS to fetch fresh capacity info
+	// The TTL for this cache is controlled by the GetVmssSizeRefreshPeriod interval
+	EnableGetVmss bool `json:"enableGetVmss,omitempty" yaml:"enableGetVmss,omitempty"`
+
+	// GetVmssSizeRefreshPeriod defines how frequently to call GET VMSS API to fetch VMSS info per nodegroup instance
+	GetVmssSizeRefreshPeriod time.Duration `json:"getVmssSizeRefreshPeriod,omitempty" yaml:"getVmssSizeRefreshPeriod,omitempty"`
 }
 
 // BuildAzureConfig returns a Config object for the Azure clients

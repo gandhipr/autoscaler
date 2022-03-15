@@ -70,6 +70,9 @@ type ScaleSet struct {
 	lastSizeRefresh   time.Time
 	sizeRefreshPeriod time.Duration
 
+	enableGetVmss            bool
+	getVmssSizeRefreshPeriod time.Duration
+
 	instancesRefreshPeriod time.Duration
 	instancesRefreshJitter int
 
@@ -85,23 +88,32 @@ func NewScaleSet(spec *dynamic.NodeGroupSpec, az *AzureManager, curSize int64) (
 			Name: spec.Name,
 		},
 
-		minSize:                   spec.MinSize,
-		maxSize:                   spec.MaxSize,
-		labels:                    spec.Labels,
-		taints:                    spec.Taints,
-		manager:                   az,
-		curSize:                   curSize,
-		sizeRefreshPeriod:         az.azureCache.refreshInterval,
-		instancesRefreshJitter:    az.config.VmssVmsCacheJitter,
-		scaleDownPolicy:           spec.ScaleDownPolicy,
+		minSize:         spec.MinSize,
+		maxSize:         spec.MaxSize,
+		labels:          spec.Labels,
+		taints:          spec.Taints,
+		scaleDownPolicy: spec.ScaleDownPolicy,
+
+		manager:                az,
+		curSize:                curSize,
+		sizeRefreshPeriod:      az.azureCache.refreshInterval,
+		instancesRefreshJitter: az.config.VmssVmsCacheJitter,
+
 		enableForceDelete:         az.config.EnableForceDelete,
 		enableDynamicInstanceList: az.config.EnableDynamicInstanceList,
+		enableGetVmss:             az.config.EnableGetVmss,
 	}
 
 	if az.config.VmssVmsCacheTTL != 0 {
 		scaleSet.instancesRefreshPeriod = time.Duration(az.config.VmssVmsCacheTTL) * time.Second
 	} else {
 		scaleSet.instancesRefreshPeriod = defaultVmssInstancesRefreshPeriod
+	}
+
+	if az.config.GetVmssSizeRefreshPeriod != 0 {
+		scaleSet.getVmssSizeRefreshPeriod = az.config.GetVmssSizeRefreshPeriod
+	} else {
+		scaleSet.getVmssSizeRefreshPeriod = az.azureCache.refreshInterval
 	}
 
 	return scaleSet, nil
@@ -168,11 +180,6 @@ func (scaleSet *ScaleSet) getCurSize() (int64, error) {
 	scaleSet.sizeMutex.Lock()
 	defer scaleSet.sizeMutex.Unlock()
 
-	if scaleSet.lastSizeRefresh.Add(scaleSet.sizeRefreshPeriod).After(time.Now()) {
-		klog.V(3).Infof("VMSS: %s, returning in-memory size: %d", scaleSet.Name, scaleSet.curSize)
-		return scaleSet.curSize, nil
-	}
-
 	set, err := scaleSet.getVMSSFromCache()
 	if err != nil {
 		klog.Errorf("failed to get information for VMSS: %s, error: %v", scaleSet.Name, err)
@@ -187,6 +194,39 @@ func (scaleSet *ScaleSet) getCurSize() (int64, error) {
 	// 	klog.V(3).Infof("VMSS %q is in updating state, returning cached size: %d", scaleSet.Name, scaleSet.curSize)
 	// 	return scaleSet.curSize, nil
 	// }
+
+	effectiveSizeRefreshPeriod := scaleSet.sizeRefreshPeriod
+
+	// If the scale set is Spot or we are enabling the GET VMSS logic
+	// we want to have a more fresh view of the Sku.Capacity field.
+	// This is because evictions can happen
+	// at any given point in time, even before VMs are materialized as
+	// nodes. We should be able to react to those and have the autoscaler
+	// readjust the goal again to force restoration.
+	// The goal is to move the whole fleet to GET VMSS calls which is
+	// lighter on CRP and has higher limits to support fast recovery
+	if scaleSet.shouldEnableGetVmss(set) {
+		effectiveSizeRefreshPeriod = scaleSet.getVmssSizeRefreshPeriod
+	}
+
+	if scaleSet.lastSizeRefresh.Add(effectiveSizeRefreshPeriod).After(time.Now()) {
+		klog.V(3).Infof("VMSS: %s, returning in-memory size: %d", scaleSet.Name, scaleSet.curSize)
+		return scaleSet.curSize, nil
+	}
+
+	// If the toggle to utilize the GET VMSS is enabled or the scale set is on Spot,
+	// make a GET VMSS call to fetch more updated fresh info
+	if scaleSet.shouldEnableGetVmss(set) {
+		ctx, cancel := getContextWithCancel()
+		defer cancel()
+
+		var rerr *retry.Error
+		set, rerr = scaleSet.manager.azClient.virtualMachineScaleSetsClient.Get(ctx, scaleSet.manager.config.ResourceGroup, scaleSet.Name)
+		if rerr != nil {
+			klog.Errorf("failed to get information for VMSS: %s, error: %v", scaleSet.Name, rerr)
+			return -1, err
+		}
+	}
 
 	vmssSizeMutex.Lock()
 	curSize := *set.Sku.Capacity
@@ -1056,6 +1096,11 @@ func (scaleSet *ScaleSet) instanceStatusFromVM(vm compute.VirtualMachineScaleSet
 		}
 	}
 	return status
+}
+
+func (scaleSet *ScaleSet) shouldEnableGetVmss(vmss compute.VirtualMachineScaleSet) bool {
+	return scaleSet.enableGetVmss || (vmss.VirtualMachineScaleSetProperties != nil &&
+		vmss.VirtualMachineScaleSetProperties.VirtualMachineProfile != nil && vmss.VirtualMachineProfile.Priority == compute.Spot)
 }
 
 func (scaleSet *ScaleSet) invalidateInstanceCache() {

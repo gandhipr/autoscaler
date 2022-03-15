@@ -292,6 +292,10 @@ type AutoscalingOptions struct {
 	EnableForceDelete bool
 	// EnableDynamicInstanceList enables dynamic instance workflow for vmss check
 	EnableDynamicInstanceList bool
+	// EnableGetVmss enables get VMSS calls for nodegroups
+	EnableGetVmss bool
+	// GetVmssSizeRefreshPeriod is the TTL for GET VMSS cache
+	GetVmssSizeRefreshPeriod time.Duration
 }
 
 // KubeClientOptions specify options for kube client

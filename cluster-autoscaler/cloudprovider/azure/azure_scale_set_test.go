@@ -126,8 +126,11 @@ func TestTargetSize(t *testing.T) {
 	defer ctrl.Finish()
 
 	orchestrationModes := [2]compute.OrchestrationMode{compute.Uniform, compute.Flexible}
-
 	expectedScaleSets := newTestVMSSList(3, "test-asg", "eastus", compute.Uniform)
+	spotScaleSet := newTestVMSSList(5, "spot-vmss", "eastus", compute.Uniform)[0]
+	spotScaleSet.VirtualMachineProfile = &compute.VirtualMachineScaleSetVMProfile{Priority: compute.Spot}
+	expectedScaleSets = append(expectedScaleSets, spotScaleSet)
+
 	expectedVMSSVMs := newTestVMSSVMList(3)
 	expectedVMs := newTestVMList(3)
 
@@ -137,12 +140,20 @@ func TestTargetSize(t *testing.T) {
 		mockVMSSClient.EXPECT().List(gomock.Any(), provider.azureManager.config.ResourceGroup).Return(expectedScaleSets, nil).AnyTimes()
 		provider.azureManager.azClient.virtualMachineScaleSetsClient = mockVMSSClient
 
-		if orchMode == compute.Uniform {
+		// return a different capacity from GET API
+		spotScaleSet.Sku.Capacity = to.Int64Ptr(1)
+		mockVMSSClient.EXPECT().Get(gomock.Any(), provider.azureManager.config.ResourceGroup, "spot-vmss").Return(spotScaleSet, nil).Times(1)
+		provider.azureManager.azClient.virtualMachineScaleSetsClient = mockVMSSClient
+		mockVMSSVMClient := mockvmssvmclient.NewMockInterface(ctrl)
+		mockVMSSVMClient.EXPECT().List(gomock.Any(), provider.azureManager.config.ResourceGroup, "test-asg", gomock.Any()).Return(expectedVMSSVMs, nil).AnyTimes()
+		provider.azureManager.azClient.virtualMachineScaleSetVMsClient = mockVMSSVMClient
+		err := provider.azureManager.forceRefresh()
+		assert.NoError(t, err)
 
+		if orchMode == compute.Uniform {
 			mockVMSSVMClient := mockvmssvmclient.NewMockInterface(ctrl)
 			mockVMSSVMClient.EXPECT().List(gomock.Any(), provider.azureManager.config.ResourceGroup, "test-asg", gomock.Any()).Return(expectedVMSSVMs, nil).AnyTimes()
 			provider.azureManager.azClient.virtualMachineScaleSetVMsClient = mockVMSSVMClient
-
 		} else {
 			provider.azureManager.config.EnableVmssFlex = true
 			mockVMClient := mockvmclient.NewMockInterface(ctrl)
@@ -150,7 +161,7 @@ func TestTargetSize(t *testing.T) {
 			provider.azureManager.azClient.virtualMachinesClient = mockVMClient
 		}
 
-		err := provider.azureManager.forceRefresh()
+		err = provider.azureManager.forceRefresh()
 		assert.NoError(t, err)
 
 		registered := provider.azureManager.RegisterNodeGroup(
@@ -161,6 +172,21 @@ func TestTargetSize(t *testing.T) {
 		targetSize, err := provider.NodeGroups()[0].TargetSize()
 		assert.NoError(t, err)
 		assert.Equal(t, 3, targetSize)
+
+		targetSize, err = provider.NodeGroups()[0].TargetSize()
+		assert.NoError(t, err)
+		assert.Equal(t, 3, targetSize)
+
+		// With a spot nodegroup
+		spotNodeGroup := newTestScaleSet(provider.azureManager, "spot-vmss")
+		spotNodeGroup.enableGetVmss = true
+		registered = provider.azureManager.RegisterNodeGroup(spotNodeGroup)
+		assert.True(t, registered)
+		assert.Equal(t, len(provider.NodeGroups()), 2)
+
+		targetSize, err = provider.NodeGroups()[1].TargetSize()
+		assert.NoError(t, err)
+		assert.Equal(t, 1, targetSize)
 	}
 }
 
