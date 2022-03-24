@@ -252,9 +252,9 @@ func (scaleSet *ScaleSet) getScaleSetSize() (int64, error) {
 	if size == -1 {
 		return size, err
 	}
-	// If the policy for this ScaleSet is Deallocate, the TargetSize is the capacity reported by VMSS minus the nodes in deallocated state
+	// If the policy for this ScaleSet is Deallocate, the TargetSize is the capacity reported by VMSS minus the nodes in deallocated and deallocating states
 	if scaleSet.scaleDownPolicy == cloudprovider.Deallocate {
-		deallocatedInstanceCount := len(scaleSet.getInstancesByState(cloudprovider.InstanceDeallocated))
+		deallocatedInstanceCount := len(scaleSet.getInstancesByState(cloudprovider.InstanceDeallocated)) + len(scaleSet.getInstancesByState(cloudprovider.InstanceDeallocating))
 		klog.V(5).Infof("Found: %d instances in deallocated state, returning target size: %d", deallocatedInstanceCount, size-int64(deallocatedInstanceCount))
 		size -= int64(deallocatedInstanceCount)
 	}
@@ -626,17 +626,17 @@ func (scaleSet *ScaleSet) deallocateInstances(instances []*azureRef) error {
 		return azureToAutoscalerError(rerr)
 	}
 
-	// Proactively set the status of the instances to be running in cache
+	// Proactively set the status of the instances to be running in cache as deallocating. Status will change to deallocated on success
 	for _, instance := range instancesToDeallocate {
-		scaleSet.setInstanceStatusByProviderID(instance.Name, cloudprovider.InstanceStatus{State: cloudprovider.InstanceDeallocated})
+		scaleSet.setInstanceStatusByProviderID(instance.Name, cloudprovider.InstanceStatus{State: cloudprovider.InstanceDeallocating})
 	}
 
-	go scaleSet.waitForDeallocateInstances(future, requiredIds)
+	go scaleSet.waitForDeallocateInstances(future, requiredIds, instancesToDeallocate)
 
 	return nil
 }
 
-func (scaleSet *ScaleSet) waitForDeallocateInstances(future *azure.Future, requiredIds *compute.VirtualMachineScaleSetVMInstanceRequiredIDs) {
+func (scaleSet *ScaleSet) waitForDeallocateInstances(future *azure.Future, requiredIds *compute.VirtualMachineScaleSetVMInstanceRequiredIDs, instancesToDeallocate []*azureRef) {
 	ctx, cancel := getContextWithCancel()
 	defer cancel()
 	klog.V(3).Infof("Calling virtualMachineScaleSetsClient.WaitForDeallocateInstancesResult(%v) for %s", requiredIds.InstanceIds, scaleSet.Name)
@@ -644,6 +644,10 @@ func (scaleSet *ScaleSet) waitForDeallocateInstances(future *azure.Future, requi
 	isSuccess, err := isSuccessHTTPResponse(httpResponse, err)
 	if isSuccess {
 		klog.V(3).Infof("virtualMachineScaleSetsClient.WaitForDeallocateInstancesResult(%v) for %s success", requiredIds.InstanceIds, scaleSet.Name)
+		// Set the status of the instances to deallocated only if WaitForDeallocate Call Succeeds
+		for _, instance := range instancesToDeallocate {
+			scaleSet.setInstanceStatusByProviderID(instance.Name, cloudprovider.InstanceStatus{State: cloudprovider.InstanceDeallocated})
+		}
 		return
 	}
 	klog.Errorf("virtualMachineScaleSetsClient.WaitForDeallocateInstancesResult(%v) for %s failed with error: %v", requiredIds.InstanceIds, scaleSet.Name, err)
@@ -1089,9 +1093,13 @@ func (scaleSet *ScaleSet) instanceStatusFromVM(vm compute.VirtualMachineScaleSet
 			state := to.String(s.Code)
 			// only set the state to deallocated if the running state is deallocated/deallocating and provisioning is succeeded
 			// This is to avoid the weird states with Failed VMs which can fail all API calls.
-			if *vm.ProvisioningState == string(compute.GalleryProvisioningStateSucceeded) &&
-				(strings.EqualFold(state, vmPowerStateDeallocated) || strings.EqualFold(state, vmPowerStateDeallocating)) {
-				status.State = cloudprovider.InstanceDeallocated
+			if *vm.ProvisioningState == string(compute.GalleryProvisioningStateSucceeded) {
+				if strings.EqualFold(state, vmPowerStateDeallocated) {
+					status.State = cloudprovider.InstanceDeallocated
+				}
+				if strings.EqualFold(state, vmPowerStateDeallocating) {
+					status.State = cloudprovider.InstanceDeallocating
+				}
 			}
 		}
 	}

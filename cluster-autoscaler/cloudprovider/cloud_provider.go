@@ -286,6 +286,8 @@ const (
 	InstanceDeleting InstanceState = 4
 	// InstanceDeallocated means that the instance is deallocated
 	InstanceDeallocated InstanceState = 5
+	// InstanceDeallocating means the instance is currently being deallocated
+	InstanceDeallocating InstanceState = 6
 )
 
 func (s InstanceState) String() string {
@@ -300,6 +302,8 @@ func (s InstanceState) String() string {
 		return "Deleting"
 	case InstanceDeallocated:
 		return "Deallocated"
+	case InstanceDeallocating:
+		return "Deallocating"
 	default:
 		return fmt.Sprintf("%d", s)
 	}
