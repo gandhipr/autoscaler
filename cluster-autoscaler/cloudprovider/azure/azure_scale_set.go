@@ -40,6 +40,7 @@ import (
 var (
 	defaultVmssInstancesRefreshPeriod = 5 * time.Minute
 	vmssContextTimeout                = 3 * time.Minute
+	asyncContextTimeout               = 30 * time.Minute
 	vmssSizeMutex                     sync.Mutex
 )
 
@@ -274,7 +275,7 @@ func (scaleSet *ScaleSet) updateVMSSCapacity(future *azure.Future) {
 		}
 	}()
 
-	ctx, cancel := getContextWithCancel()
+	ctx, cancel := getContextWithTimeout(asyncContextTimeout)
 	defer cancel()
 
 	klog.V(3).Infof("Calling virtualMachineScaleSetsClient.WaitForCreateOrUpdateResult(%s)", scaleSet.Name)
@@ -637,7 +638,7 @@ func (scaleSet *ScaleSet) deallocateInstances(instances []*azureRef) error {
 }
 
 func (scaleSet *ScaleSet) waitForDeallocateInstances(future *azure.Future, requiredIds *compute.VirtualMachineScaleSetVMInstanceRequiredIDs, instancesToDeallocate []*azureRef) {
-	ctx, cancel := getContextWithCancel()
+	ctx, cancel := getContextWithTimeout(asyncContextTimeout)
 	defer cancel()
 	klog.V(3).Infof("Calling virtualMachineScaleSetsClient.WaitForDeallocateInstancesResult(%v) for %s", requiredIds.InstanceIds, scaleSet.Name)
 	httpResponse, err := scaleSet.manager.azClient.virtualMachineScaleSetsClient.WaitForDeallocateInstancesResult(ctx, future, scaleSet.manager.config.ResourceGroup)
@@ -739,7 +740,8 @@ func (scaleSet *ScaleSet) DeleteInstances(instances []*azureRef, hasUnregistered
 }
 
 func (scaleSet *ScaleSet) waitForDeleteInstances(future *azure.Future, requiredIds *compute.VirtualMachineScaleSetVMInstanceRequiredIDs) {
-	ctx, cancel := getContextWithCancel()
+	ctx, cancel := getContextWithTimeout(asyncContextTimeout)
+
 	defer cancel()
 	klog.V(3).Infof("Calling virtualMachineScaleSetsClient.WaitForDeleteInstancesResult(%v) for %s", requiredIds.InstanceIds, scaleSet.Name)
 	httpResponse, err := scaleSet.manager.azClient.virtualMachineScaleSetsClient.WaitForDeleteInstancesResult(ctx, future, scaleSet.manager.config.ResourceGroup)
