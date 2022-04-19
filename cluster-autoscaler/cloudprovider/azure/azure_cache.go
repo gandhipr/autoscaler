@@ -60,13 +60,13 @@ type azureCache struct {
 	skus                 map[string]*skewer.Cache
 }
 
-func newAzureCache(client *azClient, cacheTTL time.Duration, resourceGroup, vmType string, enableDynamicInstanceList bool, defaultLocation string) (*azureCache, error) {
+func newAzureCache(client *azClient, cacheTTL time.Duration, config Config) (*azureCache, error) {
 	cache := &azureCache{
 		interrupt:            make(chan struct{}),
 		azClient:             client,
 		refreshInterval:      cacheTTL,
-		resourceGroup:        resourceGroup,
-		vmType:               vmType,
+		resourceGroup:        config.ResourceGroup,
+		vmType:               config.VMType,
 		scaleSets:            make(map[string]compute.VirtualMachineScaleSet),
 		virtualMachines:      make(map[string][]compute.VirtualMachine),
 		registeredNodeGroups: make([]cloudprovider.NodeGroup, 0),
@@ -76,8 +76,8 @@ func newAzureCache(client *azClient, cacheTTL time.Duration, resourceGroup, vmTy
 		skus:                 make(map[string]*skewer.Cache),
 	}
 
-	if enableDynamicInstanceList {
-		cache.skus[defaultLocation] = &skewer.Cache{}
+	if config.EnableDynamicInstanceList {
+		cache.skus[config.Location] = &skewer.Cache{}
 	}
 
 	if err := cache.regenerate(); err != nil {
