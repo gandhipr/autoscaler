@@ -38,6 +38,7 @@ import (
 
 	"golang.org/x/crypto/pkcs12"
 
+	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/version"
 	klog "k8s.io/klog/v2"
 	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
@@ -62,6 +63,12 @@ const (
 	rtResourceType  = "Microsoft.Network/routeTables"
 	vmResourceType  = "Microsoft.Compute/virtualMachines"
 	vmExtensionType = "Microsoft.Compute/virtualMachines/extensions"
+
+	// CSE Extension checks
+	vmssCSEExtensionName            = "vmssCSE"
+	vmssExtensionProvisioningFailed = "VMExtensionProvisioningFailed"
+	// vmExtensionProvisioningErrorClass represents a Vm extension provisioning error
+	vmExtensionProvisioningErrorClass cloudprovider.InstanceErrorClass = 103
 
 	// resource ids
 	nsgID = "nsgID"

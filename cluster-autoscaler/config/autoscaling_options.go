@@ -292,6 +292,8 @@ type AutoscalingOptions struct {
 	EnableForceDelete bool
 	// EnableDynamicInstanceList enables dynamic instance workflow for vmss check
 	EnableDynamicInstanceList bool
+	// EnableDetailedCSEMessage enables emitting error messages in CSE error body
+	EnableDetailedCSEMessage bool
 	// EnableGetVmss enables get VMSS calls for nodegroups
 	EnableGetVmss bool
 	// GetVmssSizeRefreshPeriod is the TTL for GET VMSS cache

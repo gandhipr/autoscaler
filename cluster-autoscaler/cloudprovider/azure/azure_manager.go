@@ -75,6 +75,7 @@ func createAzureManagerInternal(configReader io.Reader, discoveryOpts cloudprovi
 	cfg.EnableGetVmss = autoScalingOpts.EnableGetVmss
 	cfg.GetVmssSizeRefreshPeriod = autoScalingOpts.GetVmssSizeRefreshPeriod
 	cfg.EnableDynamicInstanceList = autoScalingOpts.EnableDynamicInstanceList
+	cfg.EnableDetailedCSEMessage = autoScalingOpts.EnableDetailedCSEMessage
 
 	klog.Infof("Starting azure manager with subscription ID %q", cfg.SubscriptionID)
 

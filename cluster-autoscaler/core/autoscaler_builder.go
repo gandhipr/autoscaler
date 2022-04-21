@@ -192,10 +192,15 @@ func (b *AutoscalerBuilderImpl) updateAutoScalerProfile(autoscalingOptions confi
 		getVmssSizeRefreshPeriod, _ := time.ParseDuration(autoScalerProfile.GetVmssSizeRefreshPeriod)
 		autoscalingOptions.GetVmssSizeRefreshPeriod = getVmssSizeRefreshPeriod
 	}
-	
+
 	if autoScalerProfile.EnableForceDelete != "" {
 		enableForceDelete, _ := strconv.ParseBool(autoScalerProfile.EnableForceDelete)
 		autoscalingOptions.EnableForceDelete = enableForceDelete
+	}
+
+	if autoScalerProfile.EnableDetailedCSEMessage != "" {
+		enableDetailedCSEMessage, _ := strconv.ParseBool(autoScalerProfile.EnableDetailedCSEMessage)
+		autoscalingOptions.EnableDetailedCSEMessage = enableDetailedCSEMessage
 	}
 
 	if autoScalerProfile.EnableDynamicInstanceList != "" {

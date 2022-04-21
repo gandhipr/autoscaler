@@ -259,6 +259,7 @@ var (
 	enableDynamicInstanceList = flag.Bool("enable-dynamic-instance-list", false, "Whether to enable dynamic instance list workflow")
 	enableGetVmss             = flag.Bool("enable-get-vmss", false, "Whether to enable Get VMSS calls")
 	getVmssSizeRefreshPeriod  = flag.Duration("get-vmss-size-refresh-period", 30*time.Second, "TTL for the GET VMSS cache")
+	enableDetailedCSEMessage  = flag.Bool("enable-detailed-cse-message", false, "Whether to enable emitting error messages in CSE error body")
 )
 
 func isFlagPassed(name string) bool {
@@ -435,6 +436,7 @@ func createAutoscalingOptions() config.AutoscalingOptions {
 		EnableDynamicInstanceList:               *enableDynamicInstanceList,
 		EnableGetVmss:                           *enableGetVmss,
 		GetVmssSizeRefreshPeriod:                *getVmssSizeRefreshPeriod,
+		EnableDetailedCSEMessage:                *enableDetailedCSEMessage,
 	}
 }
 

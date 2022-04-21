@@ -247,7 +247,7 @@ type ScaleDownPolicy string
 
 const (
 	// Delete means that on scale down, nodes will be deleted
-	Delete     ScaleDownPolicy = "Delete"
+	Delete ScaleDownPolicy = "Delete"
 	// Deallocate means that on scale down, nodes will be deallocated and on scale-up they will
 	// be attempted to be started first
 	Deallocate ScaleDownPolicy = "Deallocate"

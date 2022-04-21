@@ -48,6 +48,7 @@ type AutoScalerProfile struct {
 	EnableGetVmss                     string `json:"enable-get-vmss,omitempty" yaml:"enable-get-vmss,omitempty"`
 	GetVmssSizeRefreshPeriod          string `json:"get-vmss-size-refresh-period,omitempty" yaml:"get-vmss-size-refresh-period,omitempty"`
 	EnableForceDelete                 string `json:"enable-force-delete,omitempty" yaml:"enable-force-delete,omitempty"`
+	EnableDetailedCSEMessage          string `json:"enable-detailed-cse-message,omitempty" yaml:"enable-detailed-cse-message,omitempty"`
 	EnableDynamicInstanceList         string `json:"enable-dynamic-instance-list,omitempty" yaml:"enable-dynamic-instance-list,omitempty"`
 	MinCpu                            string `json:"min-cpu,omitempty" yaml:"min-cpu"`
 	MaxCpu                            string `json:"max-cpu,omitempty" yaml:"max-cpu,omitempty"`
