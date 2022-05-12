@@ -11,6 +11,8 @@ variables:
   value: auto
 - name: autoscaler.clone.dir
   value: go/src/k8s.io/autoscaler
+- name: DisableDockerDetector
+  value: true
 
 jobs:
   - job: cluster_autoscaler_test
