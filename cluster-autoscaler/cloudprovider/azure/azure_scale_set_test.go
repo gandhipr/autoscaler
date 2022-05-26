@@ -380,86 +380,6 @@ func TestBelongs(t *testing.T) {
 
 }
 
-func TestRealStatusFromVM(t *testing.T) {
-	errorMessage := to.StringPtr("Error Message Test")
-	vmssVMs := compute.VirtualMachineScaleSetVM{
-		Name:       to.StringPtr("vmTest"),
-		ID:         to.StringPtr(fakeVirtualMachineScaleSetVMID),
-		InstanceID: to.StringPtr("0"),
-		VirtualMachineScaleSetVMProperties: &compute.VirtualMachineScaleSetVMProperties{
-			VMID:              to.StringPtr("123E4567-E89B-12D3-A456-426655440000"),
-			ProvisioningState: to.StringPtr("Succeeded"),
-			InstanceView: &compute.VirtualMachineScaleSetVMInstanceView{
-				Extensions: &[]compute.VirtualMachineExtensionInstanceView{
-					{
-						Name: to.StringPtr(vmssCSEExtensionName),
-						Statuses: &[]compute.InstanceViewStatus{
-							{
-								Level:   "Error",
-								Message: errorMessage,
-							},
-						},
-					},
-				},
-			},
-		},
-		Resources: &[]compute.VirtualMachineExtension{
-			{
-				VirtualMachineExtensionProperties: &compute.VirtualMachineExtensionProperties{
-					ProvisioningState: to.StringPtr(string(compute.GalleryProvisioningStateFailed)),
-				},
-			},
-		},
-	}
-
-	expectedStatusWOMessage := &cloudprovider.InstanceStatus{
-		ErrorInfo: &cloudprovider.InstanceErrorInfo{
-			ErrorClass: vmExtensionProvisioningErrorClass,
-			ErrorCode:  vmssExtensionProvisioningFailed,
-		},
-		State: cloudprovider.InstanceCreating,
-	}
-
-	expectedStatusWMessage := &cloudprovider.InstanceStatus{
-		ErrorInfo: &cloudprovider.InstanceErrorInfo{
-			ErrorClass:   vmExtensionProvisioningErrorClass,
-			ErrorCode:    vmssExtensionProvisioningFailed,
-			ErrorMessage: fmt.Sprintf("%s: %v", to.String(vmssVMs.Name), []string{to.String(errorMessage)}),
-		},
-		State: cloudprovider.InstanceCreating,
-	}
-
-	manager := newTestAzureManager(t)
-	resourceLimiter := cloudprovider.NewResourceLimiter(
-		map[string]int64{cloudprovider.ResourceNameCores: 1, cloudprovider.ResourceNameMemory: 10000000},
-		map[string]int64{cloudprovider.ResourceNameCores: 10, cloudprovider.ResourceNameMemory: 100000000})
-	provider, _ := BuildAzureCloudProvider(manager, resourceLimiter)
-	manager.RegisterNodeGroup(
-		newTestScaleSet(manager, "test-asg"))
-	manager.explicitlyConfigured["test-asg"] = true
-	scaleSet, _ := provider.NodeGroups()[0].(*ScaleSet)
-
-	t.Run("RealStatusFromVM test with a CSE error in VM extensions", func(t *testing.T) {
-		(*vmssVMs.Resources)[0].Name = to.StringPtr(vmssCSEExtensionName)
-		scaleSet.enableDetailedCSEMessage = true
-		actualStatus := scaleSet.instanceStatusFromVM(vmssVMs)
-		assert.Equal(t, expectedStatusWMessage, actualStatus)
-
-		// test if toggle enableDetailedCSEMessage is set to false
-		scaleSet.enableDetailedCSEMessage = false
-		actualStatus = scaleSet.instanceStatusFromVM(vmssVMs)
-		assert.Equal(t, expectedStatusWOMessage, actualStatus)
-	})
-
-	t.Run("RealStatusFromVM test with no CSE error in VM extensions", func(t *testing.T) {
-		(*vmssVMs.Resources)[0].Name = to.StringPtr("notCSE")
-		scaleSet.enableDetailedCSEMessage = true
-		actualStatus :=  scaleSet.instanceStatusFromVM(vmssVMs)
-		assert.Equal(t, expectedStatusWOMessage, actualStatus)
-	})
-
-}
-
 func TestDeleteNodes(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -909,5 +829,53 @@ func TestTemplateNodeInfo(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, nodeInfo)
 		assert.NotEmpty(t, nodeInfo.Pods)
+	})
+}
+func TestCseErrors(t *testing.T) {
+	errorMessage := to.StringPtr("Error Message Test")
+	vmssVMs := compute.VirtualMachineScaleSetVM{
+		Name:       to.StringPtr("vmTest"),
+		ID:         to.StringPtr(fakeVirtualMachineScaleSetVMID),
+		InstanceID: to.StringPtr("0"),
+		VirtualMachineScaleSetVMProperties: &compute.VirtualMachineScaleSetVMProperties{
+			VMID:              to.StringPtr("123E4567-E89B-12D3-A456-426655440000"),
+			ProvisioningState: to.StringPtr("Succeeded"),
+			InstanceView: &compute.VirtualMachineScaleSetVMInstanceView{
+				Extensions: &[]compute.VirtualMachineExtensionInstanceView{
+					{
+						Statuses: &[]compute.InstanceViewStatus{
+							{
+								Level:   "Error",
+								Message: errorMessage,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	manager := newTestAzureManager(t)
+	resourceLimiter := cloudprovider.NewResourceLimiter(
+		map[string]int64{cloudprovider.ResourceNameCores: 1, cloudprovider.ResourceNameMemory: 10000000},
+		map[string]int64{cloudprovider.ResourceNameCores: 10, cloudprovider.ResourceNameMemory: 100000000})
+	provider, _ := BuildAzureCloudProvider(manager, resourceLimiter)
+	manager.RegisterNodeGroup(
+		newTestScaleSet(manager, "test-asg"))
+	manager.explicitlyConfigured["test-asg"] = true
+	scaleSet, _ := provider.NodeGroups()[0].(*ScaleSet)
+
+	t.Run("getCSEErrorMessages test with CSE error in VM extensions", func(t *testing.T) {
+		expectedCSEWErrorMessage := "Error Message Test"
+		(*vmssVMs.InstanceView.Extensions)[0].Name = to.StringPtr(vmssCSEExtensionName)
+		actualCSEErrorMessage, actualCSEFailureBool := scaleSet.cseErrors(vmssVMs.InstanceView.Extensions)
+		assert.True(t, actualCSEFailureBool)
+		assert.Equal(t, []string{expectedCSEWErrorMessage}, actualCSEErrorMessage)
+	})
+	t.Run("getCSEErrorMessages test with no CSE error in VM extensions", func(t *testing.T) {
+		(*vmssVMs.InstanceView.Extensions)[0].Name = to.StringPtr("notCSEExtension")
+		actualCSEErrorMessage, actualCSEFailureBool := scaleSet.cseErrors(vmssVMs.InstanceView.Extensions)
+		assert.False(t, actualCSEFailureBool)
+		assert.Equal(t, []string(nil), actualCSEErrorMessage)
 	})
 }

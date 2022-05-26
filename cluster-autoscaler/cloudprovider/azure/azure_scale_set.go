@@ -119,6 +119,10 @@ func NewScaleSet(spec *dynamic.NodeGroupSpec, az *AzureManager, curSize int64) (
 		scaleSet.getVmssSizeRefreshPeriod = az.azureCache.refreshInterval
 	}
 
+	if az.config.EnableDetailedCSEMessage {
+		klog.V(2).Infof("enableDetailedCSEMessage: %t", scaleSet.enableDetailedCSEMessage)
+	}
+
 	return scaleSet, nil
 }
 
@@ -737,7 +741,6 @@ func (scaleSet *ScaleSet) DeleteInstances(instances []*azureRef, hasUnregistered
 	}
 
 	go scaleSet.waitForDeleteInstances(future, requiredIds)
-
 	return nil
 }
 
@@ -1084,28 +1087,15 @@ func (scaleSet *ScaleSet) instanceStatusFromVM(vm compute.VirtualMachineScaleSet
 		status.State = cloudprovider.InstanceRunning
 	}
 
-	if vm.Resources != nil {
-		for _, resource := range *vm.Resources {
-			if resource.ProvisioningState != nil && *resource.ProvisioningState == string(compute.GalleryProvisioningStateFailed) {
-				status.State = cloudprovider.InstanceCreating
-				status.ErrorInfo = &cloudprovider.InstanceErrorInfo{
-					ErrorClass: vmExtensionProvisioningErrorClass,
-					ErrorCode:  vmssExtensionProvisioningFailed,
-				}
-
-				// Add CSE Message in error info body for CSE Extensions if enableDetailedCSEMessage is true
-				if strings.EqualFold(to.String(resource.Name), vmssCSEExtensionName) && scaleSet.enableDetailedCSEMessage {
-					if vm.VirtualMachineScaleSetVMProperties != nil && vm.VirtualMachineScaleSetVMProperties.InstanceView != nil {
-						errorMessages := scaleSet.getCSEErrorMessages(vm.VirtualMachineScaleSetVMProperties.InstanceView.Extensions)
-						statusMessage := fmt.Sprintf("%s: %v", to.String(vm.Name), errorMessages)
-						status.ErrorInfo = &cloudprovider.InstanceErrorInfo{
-							ErrorClass:   vmExtensionProvisioningErrorClass,
-							ErrorCode:    vmssExtensionProvisioningFailed,
-							ErrorMessage: statusMessage,
-						}
-					}
-				}
+	// Add vmssCSE Provisioning Failed Message in error info body for vmssCSE Extensions if enableDetailedCSEMessage is true
+	if scaleSet.enableDetailedCSEMessage && vm.InstanceView != nil {
+		if err, failed := scaleSet.cseErrors(vm.InstanceView.Extensions); failed {
+			errorInfo := &cloudprovider.InstanceErrorInfo{
+				ErrorClass:   vmExtensionProvisioningErrorClass,
+				ErrorCode:    vmssExtensionProvisioningFailed,
+				ErrorMessage: fmt.Sprintf("%s: %v", to.String(vm.Name), err),
 			}
+			status.ErrorInfo = errorInfo
 		}
 	}
 
@@ -1157,18 +1147,20 @@ func (scaleSet *ScaleSet) getOrchestrationMode() (compute.OrchestrationMode, err
 	return vmss.OrchestrationMode, nil
 }
 
-func (scaleSet *ScaleSet) getCSEErrorMessages(extensions *[]compute.VirtualMachineExtensionInstanceView) []string {
-	var errorMessages []string
+func (scaleSet *ScaleSet) cseErrors(extensions *[]compute.VirtualMachineExtensionInstanceView) ([]string, bool) {
+	var errors []string
+	failed := false
 	if extensions != nil {
 		for _, extension := range *extensions {
 			if strings.EqualFold(to.String(extension.Name), vmssCSEExtensionName) && extension.Statuses != nil {
 				for _, status := range *extension.Statuses {
 					if status.Level == "Error" {
-						errorMessages = append(errorMessages, to.String(status.Message))
+						errors = append(errors, to.String(status.Message))
+						failed = true
 					}
 				}
 			}
 		}
 	}
-	return errorMessages
+	return errors, failed
 }

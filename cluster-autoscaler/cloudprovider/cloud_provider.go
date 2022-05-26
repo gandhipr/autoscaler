@@ -328,6 +328,10 @@ const (
 	OutOfResourcesErrorClass InstanceErrorClass = 1
 	// OtherErrorClass means some non-specific error situation occurred
 	OtherErrorClass InstanceErrorClass = 99
+	// VMProvisioningErrorClass represents a Vm provisioning error
+	VMProvisioningErrorClass InstanceErrorClass = 102
+	// VMExtensionProvisioningErrorClass represents a Vm extension provisioning error
+	VMExtensionProvisioningErrorClass InstanceErrorClass = 103
 )
 
 func (c InstanceErrorClass) String() string {
@@ -336,6 +340,10 @@ func (c InstanceErrorClass) String() string {
 		return "OutOfResource"
 	case OtherErrorClass:
 		return "Other"
+	case VMProvisioningErrorClass:
+		return "VMProvisioningError"
+	case VMExtensionProvisioningErrorClass:
+		return "VMExtensionProvisioningError"
 	default:
 		return fmt.Sprintf("%d", c)
 	}
