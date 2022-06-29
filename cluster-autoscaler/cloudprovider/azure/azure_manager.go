@@ -173,7 +173,7 @@ func (m *AzureManager) buildNodeGroupFromSpec(spec string) (cloudprovider.NodeGr
 	case vmTypeStandard:
 		return NewAgentPool(s, m)
 	case vmTypeVMSS:
-		return NewScaleSet(s, m, -1)
+		return NewScaleSet(s, m, -1, false)
 	default:
 		return nil, fmt.Errorf("vmtype %s not supported", m.config.VMType)
 	}
@@ -364,7 +364,9 @@ func (m *AzureManager) getFilteredScaleSets(filter []labelAutoDiscoveryConfig) (
 			curSize = *scaleSet.Sku.Capacity
 		}
 
-		vmss, err := NewScaleSet(spec, m, curSize)
+		dedicatedHost := scaleSet.VirtualMachineScaleSetProperties != nil && scaleSet.VirtualMachineScaleSetProperties.HostGroup != nil
+
+		vmss, err := NewScaleSet(spec, m, curSize, dedicatedHost)
 		if err != nil {
 			klog.Warningf("ignoring vmss %q %s", *scaleSet.Name, err)
 			continue

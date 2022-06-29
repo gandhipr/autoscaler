@@ -37,9 +37,10 @@ func newTestScaleSet(manager *AzureManager, name string) *ScaleSet {
 		azureRef: azureRef{
 			Name: name,
 		},
-		manager: manager,
-		minSize: 1,
-		maxSize: 5,
+		manager:           manager,
+		minSize:           1,
+		maxSize:           5,
+		enableForceDelete: manager.config.EnableForceDelete,
 	}
 }
 
@@ -560,6 +561,114 @@ func TestDeleteNodeUnregistered(t *testing.T) {
 		assert.True(t, found, true)
 		assert.Equal(t, instance0.Status.State, cloudprovider.InstanceDeleting)
 	}
+
+}
+
+func TestDeleteInstancesWithForceDeleteEnabled(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	manager := newTestAzureManager(t)
+	// enabling forceDelete
+	manager.config.EnableForceDelete = true
+
+	vmssName := "test-asg"
+	var vmssCapacity int64 = 3
+	//hostGroupId := "test-hostGroup"
+	//hostGroup := &compute.SubResource{
+	//	ID: &hostGroupId,
+	//}
+
+	expectedScaleSets := []compute.VirtualMachineScaleSet{
+		{
+			Name: &vmssName,
+			Sku: &compute.Sku{
+				Capacity: &vmssCapacity,
+			},
+			VirtualMachineScaleSetProperties: &compute.VirtualMachineScaleSetProperties{
+				OrchestrationMode: compute.Uniform,
+			},
+		},
+	}
+	expectedVMSSVMs := newTestVMSSVMList(3)
+
+	mockVMSSClient := mockvmssclient.NewMockInterface(ctrl)
+	mockVMSSClient.EXPECT().List(gomock.Any(), manager.config.ResourceGroup).Return(expectedScaleSets, nil).Times(2)
+	mockVMSSClient.EXPECT().DeleteInstancesAsync(gomock.Any(), manager.config.ResourceGroup, gomock.Any(), gomock.Any(), true).Return(nil, nil)
+	mockVMSSClient.EXPECT().WaitForDeleteInstancesResult(gomock.Any(), gomock.Any(), manager.config.ResourceGroup).Return(&http.Response{StatusCode: http.StatusOK}, nil).AnyTimes()
+	manager.azClient.virtualMachineScaleSetsClient = mockVMSSClient
+	mockVMSSVMClient := mockvmssvmclient.NewMockInterface(ctrl)
+	mockVMSSVMClient.EXPECT().List(gomock.Any(), manager.config.ResourceGroup, "test-asg", gomock.Any()).Return(expectedVMSSVMs, nil).AnyTimes()
+	manager.azClient.virtualMachineScaleSetVMsClient = mockVMSSVMClient
+	err := manager.forceRefresh()
+	assert.NoError(t, err)
+
+	resourceLimiter := cloudprovider.NewResourceLimiter(
+		map[string]int64{cloudprovider.ResourceNameCores: 1, cloudprovider.ResourceNameMemory: 10000000},
+		map[string]int64{cloudprovider.ResourceNameCores: 10, cloudprovider.ResourceNameMemory: 100000000})
+	provider, err := BuildAzureCloudProvider(manager, resourceLimiter)
+	assert.NoError(t, err)
+
+	registered := manager.RegisterNodeGroup(
+		newTestScaleSet(manager, "test-asg"))
+	manager.explicitlyConfigured["test-asg"] = true
+	assert.True(t, registered)
+	err = manager.forceRefresh()
+	assert.NoError(t, err)
+
+	scaleSet, ok := provider.NodeGroups()[0].(*ScaleSet)
+	assert.True(t, ok)
+
+	targetSize, err := scaleSet.TargetSize()
+	assert.NoError(t, err)
+	assert.Equal(t, 3, targetSize)
+
+	// Perform the delete operation
+	nodesToDelete := []*apiv1.Node{
+		{
+			Spec: apiv1.NodeSpec{
+				ProviderID: "azure://" + fmt.Sprintf(fakeVirtualMachineScaleSetVMID, 0),
+			},
+		},
+		{
+			Spec: apiv1.NodeSpec{
+				ProviderID: "azure://" + fmt.Sprintf(fakeVirtualMachineScaleSetVMID, 2),
+			},
+		},
+	}
+	err = scaleSet.DeleteNodes(nodesToDelete)
+	assert.NoError(t, err)
+	vmssCapacity = 1
+	expectedScaleSets = []compute.VirtualMachineScaleSet{
+		{
+			Name: &vmssName,
+			Sku: &compute.Sku{
+				Capacity: &vmssCapacity,
+			},
+			VirtualMachineScaleSetProperties: &compute.VirtualMachineScaleSetProperties{
+				OrchestrationMode: compute.Uniform,
+			},
+		},
+	}
+	mockVMSSClient.EXPECT().List(gomock.Any(), manager.config.ResourceGroup).Return(expectedScaleSets, nil).AnyTimes()
+	expectedVMSSVMs[0].ProvisioningState = to.StringPtr(string(compute.GalleryProvisioningStateDeleting))
+	expectedVMSSVMs[2].ProvisioningState = to.StringPtr(string(compute.GalleryProvisioningStateDeleting))
+	mockVMSSVMClient.EXPECT().List(gomock.Any(), manager.config.ResourceGroup, "test-asg", gomock.Any()).Return(expectedVMSSVMs, nil).AnyTimes()
+	err = manager.forceRefresh()
+	assert.NoError(t, err)
+
+	// Ensure the the cached size has been proactively decremented by 2
+	targetSize, err = scaleSet.TargetSize()
+	assert.NoError(t, err)
+	assert.Equal(t, 1, targetSize)
+
+	// Ensure that the status for the instances is Deleting
+	instance0, found := scaleSet.getInstanceByProviderID("azure://" + fmt.Sprintf(fakeVirtualMachineScaleSetVMID, 0))
+	assert.True(t, found, true)
+	assert.Equal(t, instance0.Status.State, cloudprovider.InstanceDeleting)
+
+	instance2, found := scaleSet.getInstanceByProviderID("azure://" + fmt.Sprintf(fakeVirtualMachineScaleSetVMID, 2))
+	assert.True(t, found, true)
+	assert.Equal(t, instance2.Status.State, cloudprovider.InstanceDeleting)
 
 }
 

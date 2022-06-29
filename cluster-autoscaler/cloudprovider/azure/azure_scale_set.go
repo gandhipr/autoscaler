@@ -81,10 +81,13 @@ type ScaleSet struct {
 	instanceMutex       sync.Mutex
 	instanceCache       []cloudprovider.Instance
 	lastInstanceRefresh time.Time
+
+	// uses Azure Dedicated Host
+	dedicatedHost bool
 }
 
 // NewScaleSet creates a new NewScaleSet.
-func NewScaleSet(spec *dynamic.NodeGroupSpec, az *AzureManager, curSize int64) (*ScaleSet, error) {
+func NewScaleSet(spec *dynamic.NodeGroupSpec, az *AzureManager, curSize int64, dedicatedHost bool) (*ScaleSet, error) {
 	scaleSet := &ScaleSet{
 		azureRef: azureRef{
 			Name: spec.Name,
@@ -105,6 +108,7 @@ func NewScaleSet(spec *dynamic.NodeGroupSpec, az *AzureManager, curSize int64) (
 		enableDynamicInstanceList: az.config.EnableDynamicInstanceList,
 		enableDetailedCSEMessage:  az.config.EnableDetailedCSEMessage,
 		enableGetVmss:             az.config.EnableGetVmss,
+		dedicatedHost:             dedicatedHost,
 	}
 
 	if az.config.VmssVmsCacheTTL != 0 {
@@ -713,13 +717,8 @@ func (scaleSet *ScaleSet) DeleteInstances(instances []*azureRef, hasUnregistered
 
 	ctx, cancel := getContextWithTimeout(vmssContextTimeout)
 	defer cancel()
-	resourceGroup := scaleSet.manager.config.ResourceGroup
 
-	scaleSet.instanceMutex.Lock()
-
-	klog.V(3).Infof("Calling virtualMachineScaleSetsClient.DeleteInstancesAsync(%v) for %s", requiredIds.InstanceIds, scaleSet.Name)
-	future, rerr := scaleSet.manager.azClient.virtualMachineScaleSetsClient.DeleteInstancesAsync(ctx, resourceGroup, commonAsg.Id(), *requiredIds, scaleSet.enableForceDelete)
-	scaleSet.instanceMutex.Unlock()
+	future, rerr := scaleSet.deleteInstances(ctx, requiredIds, commonAsg.Id())
 	if rerr != nil {
 		klog.Errorf("virtualMachineScaleSetsClient.DeleteInstancesAsync for instances %v for %s failed: %+v", requiredIds.InstanceIds, scaleSet.Name, rerr)
 		return azureToAutoscalerError(rerr)
