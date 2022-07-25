@@ -59,6 +59,7 @@ func CreateAzureNodeInfoComparator(extraIgnoredLabels []string, ratioOpts config
 	for k, v := range BasicIgnoredLabels {
 		azureIgnoredLabels[k] = v
 	}
+	azureIgnoredLabels[AzureDiskTopologyKey] = true
 	azureIgnoredLabels[AzureNodepoolLegacyLabel] = true
 	azureIgnoredLabels[AzureNodepoolLabel] = true
 	azureIgnoredLabels[aksEngineVersionLabel] = true
