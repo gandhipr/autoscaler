@@ -137,7 +137,10 @@ const validAzureCfgForStandardVMTypeWithoutDeploymentParameters = `{
         "deployment":"cluster-autoscaler-0001"
 }`
 
-const invalidAzureCfg = `{{}"cloud": "AzurePublicCloud",}`
+const (
+	invalidAzureCfg = `{{}"cloud": "AzurePublicCloud",}`
+	testASG         = "test-asg"
+)
 
 func TestCreateAzureManagerValidConfig(t *testing.T) {
 	ctrl := gomock.NewController(t)

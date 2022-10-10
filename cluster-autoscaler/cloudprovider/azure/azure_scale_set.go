@@ -570,7 +570,36 @@ func (scaleSet *ScaleSet) waitForStartInstances(future *azure.Future, requiredId
 		klog.V(3).Infof("virtualMachineScaleSetsClient.WaitForStartInstancesResult(%v) for %s success", requiredIds.InstanceIds, scaleSet.Name)
 		return
 	}
-	klog.Errorf("virtualMachineScaleSetsClient.WaitForStartInstancesResult(%v) for %s failed with error: %v", requiredIds.InstanceIds, scaleSet.Name, err)
+
+	scaleSet.resetDeallocatedVMStatus()
+
+	klog.Errorf("virtualMachineScaleSetsClient.WaitForStartInstancesResult(%v) for %s failed with error: %v",
+		requiredIds.InstanceIds, scaleSet.Name, err)
+}
+
+func (scaleSet *ScaleSet) resetDeallocatedVMStatus() {
+	vms, rerr := scaleSet.GetScaleSetVms()
+	if rerr != nil {
+		klog.Warningf("Error fetching vms while resetting vm statuses for scaleset %s", scaleSet.Name)
+		return
+	}
+
+	for _, vm := range vms {
+		providerID, err := getProviderID(*vm.ID)
+		if err != nil {
+			// This shouldn't happen. Log a warning message for tracking.
+			klog.Warningf("resetDeallocatedVMStatus.getProviderID failed with error: %v", err)
+			continue
+		}
+		if providerID == "" {
+			continue
+		}
+		// Cluster autoscaler only starts the virtual machines that are in deallocated state.
+		// Hence, we are setting the status back to only possible status == deallocated for failed or notRunning vm.
+		if isNotStarted(vm.InstanceView) {
+			scaleSet.setInstanceStatusByProviderID(providerID, cloudprovider.InstanceStatus{State: cloudprovider.InstanceDeallocated})
+		}
+	}
 }
 
 // deallocateInstances deallocates the given instances. All instances must be controlled by the same nodegroup.
@@ -970,10 +999,9 @@ func addInstanceToCache(instances *[]cloudprovider.Instance, id *string, provisi
 	}
 
 	*instances = append(*instances, cloudprovider.Instance{
-		Id:     "azure://" + resourceID,
+		Id:     azurePrefix + resourceID,
 		Status: instanceStatusFromProvisioningStateAndPowerState(resourceID, provisioningState, powerState),
 	})
-}
 
 func (scaleSet *ScaleSet) getInstanceByProviderIDNoLock(providerID string) (cloudprovider.Instance, bool) {
 	for _, instance := range scaleSet.instanceCache {
@@ -1066,7 +1094,7 @@ func (scaleSet *ScaleSet) instanceStatusFromVM(vm compute.VirtualMachineScaleSet
 	// an unfortunate VM update (TTL 5 min) to reset that state to running.
 	if vm.ProvisioningState == nil || *vm.ProvisioningState == string(compute.GalleryProvisioningStateUpdating) {
 		resourceID, _ := convertResourceGroupNameToLower(*vm.ID)
-		if instance, found := scaleSet.getInstanceByProviderIDNoLock("azure://" + resourceID); found {
+		if instance, found := scaleSet.getInstanceByProviderIDNoLock(azurePrefix + resourceID); found {
 			return instance.Status
 		}
 		return nil
@@ -1116,6 +1144,7 @@ func (scaleSet *ScaleSet) instanceStatusFromVM(vm compute.VirtualMachineScaleSet
 			}
 		}
 	}
+
 	return status
 }
 

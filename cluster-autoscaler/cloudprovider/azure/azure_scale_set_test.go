@@ -99,7 +99,7 @@ func newApiNode(orchmode compute.OrchestrationMode, vmID int64) *apiv1.Node {
 
 	node := &apiv1.Node{
 		Spec: apiv1.NodeSpec{
-			ProviderID: "azure://" + fmt.Sprintf(providerId, vmID),
+			ProviderID: azurePrefix + fmt.Sprintf(providerId, vmID),
 		},
 	}
 	return node
@@ -367,7 +367,7 @@ func TestBelongs(t *testing.T) {
 
 		invalidNode := &apiv1.Node{
 			Spec: apiv1.NodeSpec{
-				ProviderID: "azure:///subscriptions/test-subscrition-id/resourcegroups/invalid-asg/providers/microsoft.compute/virtualmachinescalesets/agents/virtualmachines/0",
+				ProviderID: azurePrefix + "/subscriptions/test-subscrition-id/resourcegroups/invalid-asg/providers/microsoft.compute/virtualmachinescalesets/agents/virtualmachines/0",
 			},
 		}
 		_, err := scaleSet.Belongs(invalidNode)
@@ -378,7 +378,6 @@ func TestBelongs(t *testing.T) {
 		assert.Equal(t, true, belongs)
 		assert.NoError(t, err)
 	}
-
 }
 
 func TestDeleteNodes(t *testing.T) {
@@ -479,7 +478,6 @@ func TestDeleteNodes(t *testing.T) {
 		instance2, found := scaleSet.getInstanceByProviderID(nodesToDelete[1].Spec.ProviderID)
 		assert.True(t, found, true)
 		assert.Equal(t, instance2.Status.State, cloudprovider.InstanceDeleting)
-
 	}
 }
 
@@ -561,7 +559,6 @@ func TestDeleteNodeUnregistered(t *testing.T) {
 		assert.True(t, found, true)
 		assert.Equal(t, instance0.Status.State, cloudprovider.InstanceDeleting)
 	}
-
 }
 
 func TestDeleteInstancesWithForceDeleteEnabled(t *testing.T) {
@@ -626,12 +623,12 @@ func TestDeleteInstancesWithForceDeleteEnabled(t *testing.T) {
 	nodesToDelete := []*apiv1.Node{
 		{
 			Spec: apiv1.NodeSpec{
-				ProviderID: "azure://" + fmt.Sprintf(fakeVirtualMachineScaleSetVMID, 0),
+				ProviderID: azurePrefix + fmt.Sprintf(fakeVirtualMachineScaleSetVMID, 0),
 			},
 		},
 		{
 			Spec: apiv1.NodeSpec{
-				ProviderID: "azure://" + fmt.Sprintf(fakeVirtualMachineScaleSetVMID, 2),
+				ProviderID: azurePrefix + fmt.Sprintf(fakeVirtualMachineScaleSetVMID, 2),
 			},
 		},
 	}
@@ -662,11 +659,11 @@ func TestDeleteInstancesWithForceDeleteEnabled(t *testing.T) {
 	assert.Equal(t, 1, targetSize)
 
 	// Ensure that the status for the instances is Deleting
-	instance0, found := scaleSet.getInstanceByProviderID("azure://" + fmt.Sprintf(fakeVirtualMachineScaleSetVMID, 0))
+	instance0, found := scaleSet.getInstanceByProviderID(azurePrefix + fmt.Sprintf(fakeVirtualMachineScaleSetVMID, 0))
 	assert.True(t, found, true)
 	assert.Equal(t, instance0.Status.State, cloudprovider.InstanceDeleting)
 
-	instance2, found := scaleSet.getInstanceByProviderID("azure://" + fmt.Sprintf(fakeVirtualMachineScaleSetVMID, 2))
+	instance2, found := scaleSet.getInstanceByProviderID(azurePrefix + fmt.Sprintf(fakeVirtualMachineScaleSetVMID, 2))
 	assert.True(t, found, true)
 	assert.Equal(t, instance2.Status.State, cloudprovider.InstanceDeleting)
 
@@ -723,7 +720,7 @@ func TestDeleteNoConflictRequest(t *testing.T) {
 
 	node := &apiv1.Node{
 		Spec: apiv1.NodeSpec{
-			ProviderID: "azure://" + fmt.Sprintf(fakeVirtualMachineScaleSetVMID, 0),
+			ProviderID: azurePrefix + fmt.Sprintf(fakeVirtualMachineScaleSetVMID, 0),
 		},
 	}
 
@@ -806,14 +803,14 @@ func TestScaleSetNodes(t *testing.T) {
 
 		if orchMode == compute.Uniform {
 
-			assert.Equal(t, instances[0], cloudprovider.Instance{Id: "azure://" + fmt.Sprintf(fakeVirtualMachineScaleSetVMID, 0)})
-			assert.Equal(t, instances[1], cloudprovider.Instance{Id: "azure://" + fmt.Sprintf(fakeVirtualMachineScaleSetVMID, 1)})
-			assert.Equal(t, instances[2], cloudprovider.Instance{Id: "azure://" + fmt.Sprintf(fakeVirtualMachineScaleSetVMID, 2)})
+			assert.Equal(t, instances[0], cloudprovider.Instance{Id: azurePrefix + fmt.Sprintf(fakeVirtualMachineScaleSetVMID, 0)})
+			assert.Equal(t, instances[1], cloudprovider.Instance{Id: azurePrefix + fmt.Sprintf(fakeVirtualMachineScaleSetVMID, 1)})
+			assert.Equal(t, instances[2], cloudprovider.Instance{Id: azurePrefix + fmt.Sprintf(fakeVirtualMachineScaleSetVMID, 2)})
 		} else {
 
-			assert.Equal(t, instances[0], cloudprovider.Instance{Id: "azure://" + fmt.Sprintf(fakeVirtualMachineVMID, 0)})
-			assert.Equal(t, instances[1], cloudprovider.Instance{Id: "azure://" + fmt.Sprintf(fakeVirtualMachineVMID, 1)})
-			assert.Equal(t, instances[2], cloudprovider.Instance{Id: "azure://" + fmt.Sprintf(fakeVirtualMachineVMID, 2)})
+			assert.Equal(t, instances[0], cloudprovider.Instance{Id: azurePrefix + fmt.Sprintf(fakeVirtualMachineVMID, 0)})
+			assert.Equal(t, instances[1], cloudprovider.Instance{Id: azurePrefix + fmt.Sprintf(fakeVirtualMachineVMID, 1)})
+			assert.Equal(t, instances[2], cloudprovider.Instance{Id: azurePrefix + fmt.Sprintf(fakeVirtualMachineVMID, 2)})
 		}
 	}
 
@@ -986,5 +983,75 @@ func TestCseErrors(t *testing.T) {
 		actualCSEErrorMessage, actualCSEFailureBool := scaleSet.cseErrors(vmssVMs.InstanceView.Extensions)
 		assert.False(t, actualCSEFailureBool)
 		assert.Equal(t, []string(nil), actualCSEErrorMessage)
+	})
+}
+
+func TestWaitForStartInstances(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	provider := newTestProvider(t)
+	mockVMSSClient := mockvmssclient.NewMockInterface(ctrl)
+	provider.azureManager.azClient.virtualMachineScaleSetsClient = mockVMSSClient
+
+	expectedVMSSVMs := newTestVMSSVMList(3)
+	var instances []cloudprovider.Instance
+	for _, vm := range expectedVMSSVMs {
+		instances = append(instances, cloudprovider.Instance{
+			Id: azurePrefix + *vm.ID,
+			Status: &cloudprovider.InstanceStatus{
+				State: cloudprovider.InstanceRunning,
+			},
+		})
+	}
+
+	asg := &ScaleSet{
+		manager:         provider.azureManager,
+		minSize:         1,
+		maxSize:         5,
+		instanceCache:   instances,
+		scaleDownPolicy: cloudprovider.Deallocate,
+	}
+	asg.Name = testASG
+	resp := &http.Response{StatusCode: 200}
+
+	t.Run("when vmssVM client returns no error on StartInstancesAsync()", func(t *testing.T) {
+		requiredInstanceIDs := &compute.VirtualMachineScaleSetVMInstanceRequiredIDs{}
+		mockVMSSClient.EXPECT().WaitForStartInstancesResult(gomock.Any(), gomock.Any(),
+			asg.manager.config.ResourceGroup).Return(resp, nil).Times(1)
+		asg.waitForStartInstances(nil, requiredInstanceIDs)
+		for _, vm := range asg.instanceCache {
+			assert.Equal(t, vm.Status.State, cloudprovider.InstanceRunning)
+		}
+	})
+
+	t.Run("when vmssVM client returns error on StartInstancesAsync() with previously deallocated instances", func(t *testing.T) {
+		mockVMSSVMClient := mockvmssvmclient.NewMockInterface(ctrl)
+		provider.azureManager.azClient.virtualMachineScaleSetVMsClient = mockVMSSVMClient
+
+		expectedVMSSVMs[0].VirtualMachineScaleSetVMProperties.ProvisioningState = to.StringPtr(string(compute.GalleryProvisioningStateSucceeded))
+		expectedVMSSVMs[1].VirtualMachineScaleSetVMProperties.ProvisioningState = to.StringPtr(string(compute.GalleryProvisioningStateFailed))
+		expectedVMSSVMs[2].VirtualMachineScaleSetVMProperties.ProvisioningState = to.StringPtr(string(compute.GalleryProvisioningStateSucceeded))
+		notRunningCode := "blahblah"
+		view := compute.VirtualMachineScaleSetVMInstanceView{
+			Statuses: &[]compute.InstanceViewStatus{
+				{
+					Code: &notRunningCode,
+				},
+			},
+		}
+		expectedVMSSVMs[1].InstanceView = &view
+		expectedVMSSVMs[2].InstanceView = &view
+
+		mockVMSSVMClient.EXPECT().List(gomock.Any(), provider.azureManager.config.ResourceGroup, testASG, gomock.Any()).Return(
+			expectedVMSSVMs, nil).Times(1)
+		mockVMSSClient.EXPECT().WaitForStartInstancesResult(gomock.Any(), gomock.Any(),
+			asg.manager.config.ResourceGroup).Return(resp, fmt.Errorf("some error message")).Times(1)
+
+		asg.waitForStartInstances(nil, &compute.VirtualMachineScaleSetVMInstanceRequiredIDs{})
+
+		assert.Equal(t, asg.instanceCache[0].Status.State, cloudprovider.InstanceRunning)
+		assert.Equal(t, asg.instanceCache[1].Status.State, cloudprovider.InstanceDeallocated)
+		assert.Equal(t, asg.instanceCache[2].Status.State, cloudprovider.InstanceDeallocated)
 	})
 }

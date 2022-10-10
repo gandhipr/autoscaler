@@ -169,14 +169,13 @@ func TestNodeGroupForNode(t *testing.T) {
 		// test node in cluster that is not in a group managed by cluster autoscaler
 		nodeNotInGroup := &apiv1.Node{
 			Spec: apiv1.NodeSpec{
-				ProviderID: "azure:///subscriptions/subscripion/resourceGroups/test-resource-group/providers/Microsoft.Compute/virtualMachines/test-instance-id-not-in-group",
+				ProviderID: azurePrefix + "/subscriptions/subscripion/resourceGroups/test-resource-group/providers/Microsoft.Compute/virtualMachines/test-instance-id-not-in-group",
 			},
 		}
 		group, err = provider.NodeGroupForNode(nodeNotInGroup)
 		assert.NoError(t, err)
 		assert.Nil(t, group)
 	}
-
 }
 
 func TestNodeGroupForNodeWithNoProviderId(t *testing.T) {

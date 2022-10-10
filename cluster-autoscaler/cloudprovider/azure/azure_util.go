@@ -231,7 +231,6 @@ func (util *AzUtil) DeleteVirtualMachine(rg string, name string) error {
 			klog.V(2).Infof("disk %s/%s removed", rg, *osDiskName)
 		}
 	}
-
 	return nil
 }
 
@@ -653,4 +652,28 @@ func vmPowerStateFromStatuses(statuses []compute.InstanceViewStatus) string {
 
 	// PowerState is not set if the VM is still creating (or has failed creation)
 	return vmPowerStateUnknown
+}
+
+func getProviderID(resourceID string) (string, error) {
+	// The resource ID is empty string, which indicates the instance may be in deleting state.
+	if resourceID == "" {
+		return "", nil
+	}
+	resourceID, err := convertResourceGroupNameToLower(resourceID)
+	if err != nil {
+		return "", err
+	}
+	return azurePrefix + resourceID, nil
+}
+
+func isNotStarted(vmInstanceView *compute.VirtualMachineScaleSetVMInstanceView) bool {
+	if vmInstanceView != nil && vmInstanceView.Statuses != nil {
+		statuses := *vmInstanceView.Statuses
+		for _, s := range statuses {
+			if !strings.EqualFold(vmPowerStateRunning, to.String(s.Code)) {
+				return true
+			}
+		}
+	}
+	return false
 }
