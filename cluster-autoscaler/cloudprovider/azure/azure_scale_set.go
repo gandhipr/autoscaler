@@ -1002,6 +1002,7 @@ func addInstanceToCache(instances *[]cloudprovider.Instance, id *string, provisi
 		Id:     azurePrefix + resourceID,
 		Status: instanceStatusFromProvisioningStateAndPowerState(resourceID, provisioningState, powerState),
 	})
+}
 
 func (scaleSet *ScaleSet) getInstanceByProviderIDNoLock(providerID string) (cloudprovider.Instance, bool) {
 	for _, instance := range scaleSet.instanceCache {
@@ -1132,13 +1133,13 @@ func (scaleSet *ScaleSet) instanceStatusFromVM(vm compute.VirtualMachineScaleSet
 
 		for _, s := range statuses {
 			state := to.String(s.Code)
-			// only set the state to deallocated if the running state is deallocated/deallocating and provisioning is succeeded
+			// set the state to deallocated/deallocating based on their running state if provisioning is succeeded.
 			// This is to avoid the weird states with Failed VMs which can fail all API calls.
+			// This information is used to build instanceCache in CA.
 			if *vm.ProvisioningState == string(compute.GalleryProvisioningStateSucceeded) {
-				if strings.EqualFold(state, vmPowerStateDeallocated) {
+				if powerStateDeallocated(state) {
 					status.State = cloudprovider.InstanceDeallocated
-				}
-				if strings.EqualFold(state, vmPowerStateDeallocating) {
+				} else if powerStateDeallocating(state) {
 					status.State = cloudprovider.InstanceDeallocating
 				}
 			}

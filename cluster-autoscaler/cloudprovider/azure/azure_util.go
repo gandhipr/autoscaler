@@ -654,6 +654,20 @@ func vmPowerStateFromStatuses(statuses []compute.InstanceViewStatus) string {
 	return vmPowerStateUnknown
 }
 
+func powerStateRunning(state string) bool {
+	return powerStateExpectedMatchesActual(vmPowerStateRunning, state)
+}
+
+func powerStateDeallocating(state string) bool {
+	return powerStateExpectedMatchesActual(vmPowerStateDeallocating, state)
+}
+func powerStateDeallocated(state string) bool {
+	return powerStateExpectedMatchesActual(vmPowerStateDeallocated, state)
+}
+func powerStateExpectedMatchesActual(expected, actual string) bool {
+	return strings.EqualFold(actual, expected)
+}
+
 func getProviderID(resourceID string) (string, error) {
 	// The resource ID is empty string, which indicates the instance may be in deleting state.
 	if resourceID == "" {
@@ -670,7 +684,7 @@ func isNotStarted(vmInstanceView *compute.VirtualMachineScaleSetVMInstanceView) 
 	if vmInstanceView != nil && vmInstanceView.Statuses != nil {
 		statuses := *vmInstanceView.Statuses
 		for _, s := range statuses {
-			if !strings.EqualFold(vmPowerStateRunning, to.String(s.Code)) {
+			if !powerStateRunning(to.String(s.Code)) {
 				return true
 			}
 		}
