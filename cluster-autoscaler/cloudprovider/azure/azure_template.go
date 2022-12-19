@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"math/rand"
 	"regexp"
+	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	"strconv"
 	"strings"
 	"time"
@@ -36,6 +37,11 @@ import (
 )
 
 const (
+	// AKSLabelPrefixValue represents the constant prefix for AKSLabelKeyPrefixValue
+	AKSLabelPrefixValue = "kubernetes.azure.com"
+	// AKSLabelKeyPrefixValue represents prefix for AKS Labels
+	AKSLabelKeyPrefixValue = AKSLabelPrefixValue + "/"
+
 	azureDiskTopologyKey = "topology.disk.csi.azure.com/zone"
 	// For NP-series SKU, the xilinx device plugin uses that resource name
 	// https://github.com/Xilinx/FPGA_as_a_Service/tree/master/k8s-fpga-device-plugin
@@ -52,17 +58,35 @@ const (
 	// This is the legacy label is added by agentbaker, agentpool={poolName} and we want to predict that
 	// a node added to this agentpool will have this as a node label. The value is fetched
 	// from the VMSS tag with key poolNameTag/legacyPoolNameTag
-	legacyAgentPoolNodeLabel = "agentpool"
+	legacyAgentPoolNodeLabelKey = "agentpool"
 	// New label that replaces the above
-	agentPoolNodeLabel = "kubernetes.azure.com/agentpool"
+	agentPoolNodeLabelKey = AKSLabelKeyPrefixValue + "agentpool"
 
 	// Storage profile node labels
-	legacyStorageProfileNodeLabel = "storageprofile"
-	storageProfileNodeLabel       = "kubernetes.azure.com/storageprofile"
+	legacyStorageProfileNodeLabelKey = "storageprofile"
+	storageProfileNodeLabelKey       = AKSLabelKeyPrefixValue + "storageprofile"
 
 	// Storage tier node labels
-	legacyStorageTierNodeLabel = "storagetier"
-	storageTierNodeLabel       = "kubernetes.azure.com/storagetier"
+	legacyStorageTierNodeLabelKey = "storagetier"
+	storageTierNodeLabelKey       = AKSLabelKeyPrefixValue + "storagetier"
+
+	// Fips node label
+	fipsNodeLabelKey = AKSLabelKeyPrefixValue + "fips_enabled"
+
+	// OS Sku node Label
+	osSkuLabelKey = AKSLabelKeyPrefixValue + "os-sku"
+
+	// Security node label
+	securityTypeLabelKey = AKSLabelKeyPrefixValue + "security-type"
+
+	// Labels defined in RP
+	// Since Cluster autoscaler cannot import RP, it is defined here.
+	// https://msazure.visualstudio.com/CloudNativeCompute/_git/aks-rp?path=/toolkit/constvalues/k8slabels/labels.go
+	customCATrustEnabledLabelKey = AKSLabelKeyPrefixValue + "custom-ca-trust-enabled"
+	kataMshvVMIsolationLabelKey  = AKSLabelKeyPrefixValue + "kata-mshv-vm-isolation"
+
+	// Cluster node label
+	clusterLabelKey = AKSLabelKeyPrefixValue + "cluster"
 )
 
 func buildNodeFromTemplate(nodeGroupName string, inputLabels map[string]string, inputTaints string,
@@ -156,27 +180,27 @@ func buildNodeFromTemplate(nodeGroupName string, inputLabels map[string]string, 
 	// NOTE: The plan is for agentpool label to be deprecated in favor of the aks-prefixed one
 	// We will have to live with both labels for a while
 	if node.Labels[legacyPoolNameTag] != "" {
-		labels[legacyAgentPoolNodeLabel] = node.Labels[legacyPoolNameTag]
-		labels[agentPoolNodeLabel] = node.Labels[legacyPoolNameTag]
+		labels[legacyAgentPoolNodeLabelKey] = node.Labels[legacyPoolNameTag]
+		labels[agentPoolNodeLabelKey] = node.Labels[legacyPoolNameTag]
 	}
 	if node.Labels[poolNameTag] != "" {
-		labels[legacyAgentPoolNodeLabel] = node.Labels[poolNameTag]
-		labels[agentPoolNodeLabel] = node.Labels[poolNameTag]
+		labels[legacyAgentPoolNodeLabelKey] = node.Labels[poolNameTag]
+		labels[agentPoolNodeLabelKey] = node.Labels[poolNameTag]
 	}
 
 	// Add the storage profile and storage tier labels
 	if template.VirtualMachineProfile != nil && template.VirtualMachineProfile.StorageProfile != nil && template.VirtualMachineProfile.StorageProfile.OsDisk != nil {
 		// ephemeral
 		if template.VirtualMachineProfile.StorageProfile.OsDisk.DiffDiskSettings != nil && template.VirtualMachineProfile.StorageProfile.OsDisk.DiffDiskSettings.Option == compute.Local {
-			labels[legacyStorageProfileNodeLabel] = "ephemeral"
-			labels[storageProfileNodeLabel] = "ephemeral"
+			labels[legacyStorageProfileNodeLabelKey] = "ephemeral"
+			labels[storageProfileNodeLabelKey] = "ephemeral"
 		} else {
-			labels[legacyStorageProfileNodeLabel] = "managed"
-			labels[storageProfileNodeLabel] = "managed"
+			labels[legacyStorageProfileNodeLabelKey] = "managed"
+			labels[storageProfileNodeLabelKey] = "managed"
 		}
 		if template.VirtualMachineProfile.StorageProfile.OsDisk.ManagedDisk != nil {
-			labels[legacyStorageTierNodeLabel] = string(template.VirtualMachineProfile.StorageProfile.OsDisk.ManagedDisk.StorageAccountType)
-			labels[storageTierNodeLabel] = string(template.VirtualMachineProfile.StorageProfile.OsDisk.ManagedDisk.StorageAccountType)
+			labels[legacyStorageTierNodeLabelKey] = string(template.VirtualMachineProfile.StorageProfile.OsDisk.ManagedDisk.StorageAccountType)
+			labels[storageTierNodeLabelKey] = string(template.VirtualMachineProfile.StorageProfile.OsDisk.ManagedDisk.StorageAccountType)
 		}
 		// Add ephemeral-storage value
 		if template.VirtualMachineProfile.StorageProfile.OsDisk.DiskSizeGB != nil {
@@ -258,6 +282,86 @@ func buildGenericLabels(template compute.VirtualMachineScaleSet, nodeName string
 
 	result[apiv1.LabelHostname] = nodeName
 	return result
+}
+
+func fetchLabel(template *compute.VirtualMachineScaleSet, nodeLabels, inputLabels map[string]string) map[string]string {
+	// Labels from the Scale Set's Tags
+	var labels map[string]string
+
+	// Prefer the explicit labels in spec coming from RP over the VMSS template
+	if len(inputLabels) > 0 {
+		labels = inputLabels
+	} else {
+		labels = extractLabelsFromScaleSet(template.Tags)
+	}
+
+	// Add the agentpool label, its value should come from the VMSS poolName tag
+	// NOTE: The plan is for agentpool label to be deprecated in favor of the aks-prefixed one
+	// We will have to live with both labels for a while
+	if nodeLabels[legacyPoolNameTag] != "" {
+		labels[legacyAgentPoolNodeLabelKey] = nodeLabels[legacyPoolNameTag]
+		labels[agentPoolNodeLabelKey] = nodeLabels[legacyPoolNameTag]
+	}
+	if nodeLabels[poolNameTag] != "" {
+		labels[legacyAgentPoolNodeLabelKey] = nodeLabels[poolNameTag]
+		labels[agentPoolNodeLabelKey] = nodeLabels[poolNameTag]
+	}
+
+	// Add node-role label
+	if nodeLabels[consts.NodeLabelRole] != "" {
+		labels[consts.NodeLabelRole] = nodeLabels[consts.NodeLabelRole]
+	}
+
+	if nodeLabels[fipsNodeLabelKey] != "" {
+		labels[fipsNodeLabelKey] = nodeLabels[fipsNodeLabelKey]
+	}
+
+	if nodeLabels[osSkuLabelKey] != "" {
+		labels[osSkuLabelKey] = nodeLabels[osSkuLabelKey]
+	}
+
+	if nodeLabels[securityTypeLabelKey] != "" {
+		labels[securityTypeLabelKey] = nodeLabels[securityTypeLabelKey]
+	}
+
+	if nodeLabels[customCATrustEnabledLabelKey] != "" {
+		labels[customCATrustEnabledLabelKey] = nodeLabels[customCATrustEnabledLabelKey]
+	}
+
+	if nodeLabels[kataMshvVMIsolationLabelKey] != "" {
+		labels[kataMshvVMIsolationLabelKey] = nodeLabels[kataMshvVMIsolationLabelKey]
+	}
+
+	if nodeLabels[clusterLabelKey] != "" {
+		labels[clusterLabelKey] = nodeLabels[clusterLabelKey]
+	}
+
+	// Add the storage tier labels
+	if template.VirtualMachineProfile != nil && template.VirtualMachineProfile.StorageProfile != nil &&
+		template.VirtualMachineProfile.StorageProfile.OsDisk != nil {
+		// ephemeral
+		if template.VirtualMachineProfile.StorageProfile.OsDisk.DiffDiskSettings != nil &&
+			template.VirtualMachineProfile.StorageProfile.OsDisk.DiffDiskSettings.Option == compute.Local {
+			labels[legacyStorageProfileNodeLabelKey] = "ephemeral"
+			labels[storageProfileNodeLabelKey] = "ephemeral"
+		} else {
+			labels[legacyStorageProfileNodeLabelKey] = "managed"
+			labels[storageProfileNodeLabelKey] = "managed"
+		}
+		if template.VirtualMachineProfile.StorageProfile.OsDisk.ManagedDisk != nil {
+			labels[legacyStorageTierNodeLabelKey] = string(template.VirtualMachineProfile.StorageProfile.OsDisk.ManagedDisk.StorageAccountType)
+			labels[storageTierNodeLabelKey] = string(template.VirtualMachineProfile.StorageProfile.OsDisk.ManagedDisk.StorageAccountType)
+		}
+	}
+
+	// If we are on GPU-enabled SKUs, append the accelerator
+	// label so that CA makes better decision when scaling from zero for GPU pools
+	if isNvidiaEnabledSKU(*template.Sku.Name) {
+		labels[GPULabel] = "nvidia"
+		labels[legacyGPULabel] = "nvidia"
+	}
+
+	return labels
 }
 
 func extractLabelsFromScaleSet(tags map[string]*string) map[string]string {

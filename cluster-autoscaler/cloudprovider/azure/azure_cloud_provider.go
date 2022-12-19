@@ -31,7 +31,7 @@ import (
 
 const (
 	// GPULabel is the label added to nodes with GPU resource.
-	GPULabel       = "kubernetes.azure.com/accelerator"
+	GPULabel       = AKSLabelKeyPrefixValue + "accelerator"
 	legacyGPULabel = "accelerator"
 )
 
