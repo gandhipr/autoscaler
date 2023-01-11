@@ -58,6 +58,9 @@ type ScaleSet struct {
 	minSize int
 	maxSize int
 
+	labels map[string]string
+	taints string
+
 	sizeMutex sync.Mutex
 	curSize   int64
 
@@ -513,7 +516,7 @@ func (scaleSet *ScaleSet) TemplateNodeInfo() (*schedulerframework.NodeInfo, erro
 		return nil, err
 	}
 
-	node, err := buildNodeFromTemplate(scaleSet.Name, template, scaleSet.manager)
+	node, err := buildNodeFromTemplate(scaleSet.Name, scaleSet.labels, scaleSet.taints, template, scaleSet.manager)
 	if err != nil {
 		return nil, err
 	}

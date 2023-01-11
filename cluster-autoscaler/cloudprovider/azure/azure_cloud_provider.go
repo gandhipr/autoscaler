@@ -32,7 +32,8 @@ import (
 
 const (
 	// GPULabel is the label added to nodes with GPU resource.
-	GPULabel = "accelerator"
+	GPULabel       = AKSLabelKeyPrefixValue + "accelerator"
+	legacyGPULabel = "accelerator"
 )
 
 var (
