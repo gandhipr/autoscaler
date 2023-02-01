@@ -1055,7 +1055,8 @@ func (csr *ClusterStateRegistry) GetUpcomingNodes() (upcomingCounts map[string]i
 			newNodes = ar.CurrentTarget - (len(readiness.Ready) + (len(readiness.Unready) - len(readiness.Deallocated)) + len(readiness.LongUnregistered))
 		}
 
-		klog.V(5).Infof("newNodes: %d, currentTarget: %d, deallocated: %d, readinessReady: %d, readinessUnready: %d, readiness.LongUnregistered: %d", newNodes, ar.CurrentTarget, len(readiness.Deallocated), len(readiness.Ready), len(readiness.Unready), len(readiness.LongUnregistered))
+		klog.V(3).Infof("newNodes: %d, currentTarget: %d, deallocated: %d, readinessReady: %d, readinessUnready: %d, readiness.LongUnregistered: %d", newNodes,
+			ar.CurrentTarget, len(readiness.Deallocated), len(readiness.Ready), len(readiness.Unready), len(readiness.LongUnregistered))
 		if newNodes <= 0 {
 			// Negative value is unlikely but theoretically possible.
 			continue

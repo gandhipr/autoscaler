@@ -1078,7 +1078,10 @@ func (a *StaticAutoscaler) cleanUpTaintsFromDeallocatedNodes(allNodes []*apiv1.N
 		}
 		ng, ok := nodeGroup.(cloudprovider.PolicyNodeGroup)
 		if ok && ng.ScaleDownPolicy() == cloudprovider.Deallocate {
-			taints.CleanToBeDeleted(node, a.ClientSet, a.AutoscalingContext.CordonNodeBeforeTerminate)
+			klog.V(3).Infof("Node %s is deallocated - attempting to remove taint from the node.", node.Name)
+			if _, err := taints.CleanToBeDeleted(node, a.ClientSet, a.AutoscalingContext.CordonNodeBeforeTerminate); err != nil {
+				klog.Errorf("error while removing taint from node %s: %s", node.Name, err.Error())
+			}
 		}
 	}
 }

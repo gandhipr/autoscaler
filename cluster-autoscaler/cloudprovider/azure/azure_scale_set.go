@@ -265,8 +265,10 @@ func (scaleSet *ScaleSet) getScaleSetSize() (int64, error) {
 	}
 	// If the policy for this ScaleSet is Deallocate, the TargetSize is the capacity reported by VMSS minus the nodes in deallocated and deallocating states
 	if scaleSet.scaleDownPolicy == cloudprovider.Deallocate {
-		deallocatedInstanceCount := len(scaleSet.getInstancesByState(cloudprovider.InstanceDeallocated)) + len(scaleSet.getInstancesByState(cloudprovider.InstanceDeallocating))
-		klog.V(5).Infof("Found: %d instances in deallocated state, returning target size: %d", deallocatedInstanceCount, size-int64(deallocatedInstanceCount))
+		deallocatedInstanceCount := len(scaleSet.getInstancesByState(cloudprovider.InstanceDeallocated)) +
+			len(scaleSet.getInstancesByState(cloudprovider.InstanceDeallocating))
+		klog.V(3).Infof("Found: %d instances in deallocated state, returning target size: %d", deallocatedInstanceCount,
+			size-int64(deallocatedInstanceCount))
 		size -= int64(deallocatedInstanceCount)
 	}
 	return size, err
