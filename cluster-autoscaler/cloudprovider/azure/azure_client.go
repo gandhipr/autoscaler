@@ -276,6 +276,7 @@ func newAzClient(cfg *Config, env *azure.Environment) (*azClient, error) {
 	// https://github.com/Azure/go-autorest/blob/main/autorest/azure/environments.go
 	skuClient := compute.NewResourceSkusClientWithBaseURI(azClientConfig.ResourceManagerEndpoint, cfg.SubscriptionID)
 	skuClient.Authorizer = azClientConfig.Authorizer
+	skuClient.UserAgent = azClientConfig.UserAgent
 	klog.V(5).Infof("Created sku client with authorizer: %v", skuClient)
 
 	return &azClient{
