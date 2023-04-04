@@ -267,8 +267,8 @@ func (scaleSet *ScaleSet) getScaleSetSize() (int64, error) {
 	if scaleSet.scaleDownPolicy == cloudprovider.Deallocate {
 		deallocatedInstanceCount := len(scaleSet.getInstancesByState(cloudprovider.InstanceDeallocated)) +
 			len(scaleSet.getInstancesByState(cloudprovider.InstanceDeallocating))
-		klog.V(3).Infof("Found: %d instances in deallocated state, returning target size: %d", deallocatedInstanceCount,
-			size-int64(deallocatedInstanceCount))
+		klog.V(3).Infof("Found: %d instances in deallocated state, returning target size: %d for scaleSet %s",
+			deallocatedInstanceCount, size-int64(deallocatedInstanceCount), scaleSet.Name)
 		size -= int64(deallocatedInstanceCount)
 	}
 	return size, err
