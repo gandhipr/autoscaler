@@ -288,10 +288,6 @@ func (b *AutoscalerBuilderImpl) updateAutoScalerProfile(autoscalingOptions confi
 		autoscalingOptions.SkipNodesWithSystemPods = skipNodesWithSystemPods
 	}
 
-	if autoScalerProfile.EnableQOSLogging != "" {
-		flag.Set("enable-qos-logging", autoScalerProfile.EnableQOSLogging)
-	}
-
 	if autoScalerProfile.ScanInterval != "" {
 		flag.Set("scan-interval", autoScalerProfile.ScanInterval)
 	}

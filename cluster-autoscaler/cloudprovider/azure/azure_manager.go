@@ -52,8 +52,19 @@ type AzureManager struct {
 	azClient *azClient
 	env      azure.Environment
 
-	azureCache           *azureCache
-	lastRefresh          time.Time
+	// azureCache is used for caching Azure resources.
+	// It keeps track of nodegroups and instances
+	// (and of which nodegroup instances belong to)
+	azureCache *azureCache
+	// lastRefresh is the time azureCache was last refreshed.
+	// Together with azureCache.refreshInterval is it used to decide whether
+	// it is time to refresh the cache from Azure resources.
+	//
+	// Cache invalidation can also be requested via invalidateCache()
+	// (used by both AzureManager and ScaleSet), which manipulates
+	// lastRefresh to force refresh on the next check.
+	lastRefresh time.Time
+
 	autoDiscoverySpecs   []labelAutoDiscoveryConfig
 	explicitlyConfigured map[string]bool
 }
@@ -205,6 +216,8 @@ func (m *AzureManager) forceRefresh() error {
 	return nil
 }
 
+// invalidateCache forces cache reload on the next check
+// by manipulating lastRefresh timestamp
 func (m *AzureManager) invalidateCache() {
 	m.lastRefresh = time.Now().Add(-1 * m.azureCache.refreshInterval)
 	klog.V(2).Infof("Invalidated Azure cache")

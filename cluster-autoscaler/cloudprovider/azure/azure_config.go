@@ -18,7 +18,7 @@ package azure
 
 import (
 	"encoding/json"
-	"errors"
+	err_ "errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -203,7 +203,7 @@ func BuildAzureConfig(configReader io.Reader) (*Config, error) {
 		}
 
 		if cfg.UseManagedIdentityExtension && cfg.UseWorkloadIdentityExtension {
-			return nil, errors.New("you can not combine both managed identity and workload identity as an authentication mechanism")
+			return nil, err_.New("you can not combine both managed identity and workload identity as an authentication mechanism")
 		}
 
 		userAssignedIdentityIDFromEnv := os.Getenv("ARM_USER_ASSIGNED_IDENTITY_ID")
@@ -509,7 +509,7 @@ func (cfg *Config) validate() error {
 	switch cfg.AuthMethod {
 	case "", authMethodPrincipal:
 		if cfg.AADClientID == "" {
-			return errors.New("ARM Client ID not set")
+			return err_.New("ARM Client ID not set")
 		}
 	case authMethodCLI:
 		// Nothing to check at the moment.

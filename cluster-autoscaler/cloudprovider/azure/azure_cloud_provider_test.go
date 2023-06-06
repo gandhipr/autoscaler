@@ -38,12 +38,12 @@ func newTestAzureManager(t *testing.T) *AzureManager {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	expectedScaleSets := newTestVMSSList(3, "test-vmss", "eastus", compute.Uniform)
+	expectedScaleSets := newTestVMSSList(3, "test-asg", "eastus", compute.Uniform)
 	expectedVMSSVMs := newTestVMSSVMList(3)
 	mockVMSSClient := mockvmssclient.NewMockInterface(ctrl)
 	mockVMSSClient.EXPECT().List(gomock.Any(), "rg").Return(expectedScaleSets, nil).AnyTimes()
 	mockVMSSVMClient := mockvmssvmclient.NewMockInterface(ctrl)
-	mockVMSSVMClient.EXPECT().List(gomock.Any(), "rg", "test-vmss", gomock.Any()).Return(expectedVMSSVMs, nil).AnyTimes()
+	mockVMSSVMClient.EXPECT().List(gomock.Any(), "rg", "test-asg", gomock.Any()).Return(expectedVMSSVMs, nil).AnyTimes()
 
 	manager := &AzureManager{
 		env:                  azure.PublicCloud,
@@ -129,7 +129,6 @@ func TestNodeGroupForNode(t *testing.T) {
 	expectedVMs := newTestVMList(3)
 
 	for _, orchMode := range orchestrationModes {
-
 		expectedScaleSets := newTestVMSSList(3, "test-asg", "eastus", orchMode)
 		provider := newTestProvider(t)
 		mockVMSSClient := mockvmssclient.NewMockInterface(ctrl)
@@ -137,7 +136,6 @@ func TestNodeGroupForNode(t *testing.T) {
 		provider.azureManager.azClient.virtualMachineScaleSetsClient = mockVMSSClient
 
 		if orchMode == compute.Uniform {
-
 			mockVMSSVMClient := mockvmssvmclient.NewMockInterface(ctrl)
 			mockVMSSVMClient.EXPECT().List(gomock.Any(), provider.azureManager.config.ResourceGroup, "test-asg", gomock.Any()).Return(expectedVMSSVMs, nil).AnyTimes()
 			provider.azureManager.azClient.virtualMachineScaleSetVMsClient = mockVMSSVMClient
@@ -147,12 +145,11 @@ func TestNodeGroupForNode(t *testing.T) {
 			provider.azureManager.config.EnableVmssFlex = true
 			mockVMClient.EXPECT().ListVmssFlexVMsWithoutInstanceView(gomock.Any(), "test-asg").Return(expectedVMs, nil).AnyTimes()
 			provider.azureManager.azClient.virtualMachinesClient = mockVMClient
-
 		}
 
 		registered := provider.azureManager.RegisterNodeGroup(
-			newTestScaleSet(provider.azureManager, "test-asg"))
-		provider.azureManager.explicitlyConfigured["test-asg"] = true
+			newTestScaleSet(provider.azureManager, testASG))
+		provider.azureManager.explicitlyConfigured[testASG] = true
 		assert.True(t, registered)
 		assert.Equal(t, len(provider.NodeGroups()), 1)
 
@@ -162,7 +159,7 @@ func TestNodeGroupForNode(t *testing.T) {
 		group, err := provider.NodeGroupForNode(node)
 		assert.NoError(t, err)
 		assert.NotNil(t, group, "Group should not be nil")
-		assert.Equal(t, group.Id(), "test-asg")
+		assert.Equal(t, group.Id(), testASG)
 		assert.Equal(t, group.MinSize(), 1)
 		assert.Equal(t, group.MaxSize(), 5)
 

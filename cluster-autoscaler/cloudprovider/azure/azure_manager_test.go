@@ -632,7 +632,6 @@ func TestFetchExplicitNodeGroups(t *testing.T) {
 		manager.azClient.virtualMachineScaleSetsClient = mockVMSSClient
 
 		if orchMode == compute.Uniform {
-
 			mockVMSSVMClient := mockvmssvmclient.NewMockInterface(ctrl)
 			mockVMSSVMClient.EXPECT().List(gomock.Any(), manager.config.ResourceGroup, "test-asg", gomock.Any()).Return(expectedVMSSVMs, nil).AnyTimes()
 			manager.azClient.virtualMachineScaleSetVMsClient = mockVMSSVMClient
@@ -722,7 +721,7 @@ func TestGetFilteredAutoscalingGroupsVmss(t *testing.T) {
 		curSize:                  3,
 		sizeRefreshPeriod:        manager.azureCache.refreshInterval,
 		getVmssSizeRefreshPeriod: manager.azureCache.refreshInterval,
-		instancesRefreshPeriod:   defaultVmssInstancesRefreshPeriod,
+		InstanceCache:            InstanceCache{instancesRefreshPeriod: defaultVmssInstancesRefreshPeriod},
 	}}
 	assert.True(t, assert.ObjectsAreEqualValues(expectedAsgs, asgs), "expected %#v, but found: %#v", expectedAsgs, asgs)
 }

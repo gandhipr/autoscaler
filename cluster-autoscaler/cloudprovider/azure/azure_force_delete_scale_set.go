@@ -25,7 +25,6 @@ import (
 
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
-	"github.com/Azure/go-autorest/autorest/to"
 )
 
 // When Azure Dedicated Host is enabled or using isolated vm skus, force deleting a VMSS fails with the following error:
@@ -61,15 +60,6 @@ var isolatedVMSizes = map[string]bool{
 	strings.ToLower("Standard_M192idms_v2"): true,
 	strings.ToLower("Standard_F72s_v2"):     true,
 	strings.ToLower("Standard_M128ms"):      true,
-}
-
-func (scaleSet *ScaleSet) getSKU() string {
-	vmssInfo, err := scaleSet.getVMSSFromCache()
-	if err != nil {
-		klog.Errorf("Failed to get information for VMSS (%q): %v", scaleSet.Name, err)
-		return ""
-	}
-	return to.String(vmssInfo.Sku.Name)
 }
 
 func (scaleSet *ScaleSet) deleteInstances(ctx context.Context, requiredIds *compute.VirtualMachineScaleSetVMInstanceRequiredIDs, commonAsgId string) (*azure.Future, *retry.Error) {

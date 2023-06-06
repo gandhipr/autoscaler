@@ -19,10 +19,10 @@ package dynamic
 import (
 	"encoding/json"
 	"fmt"
-	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"strconv"
 	"strings"
 
+	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/klog/v2"
 )
 
