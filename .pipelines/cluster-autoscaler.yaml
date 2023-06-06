@@ -26,10 +26,23 @@ jobs:
     - script: |
         echo '##vso[task.prependpath]$(GOPATH)/bin'
         hack/install-verify-tools.sh
+        go get github.com/t-yuki/gocover-cobertura
       displayName: "Prepare"
+    - task: UseDotNet@2
+      inputs:
+        version: 7.0.x
+      displayName: 'Prepare .NET Core SDK'
     - script: |
         hack/verify-all.sh -v
       displayName: "Verify"
     - script: |
-        hack/for-go-proj.sh test
+        hack/for-go-proj.sh coverage
       displayName: "Test"
+    - script: |
+        gocover-cobertura < '$(System.DefaultWorkingDirectory)/cluster-autoscaler/coverage.txt' > '$(System.DefaultWorkingDirectory)/cluster-autoscaler/coverage.xml'
+      displayName: 'Convert'
+    - task: PublishCodeCoverageResults@1
+      inputs:
+        codeCoverageTool: 'Cobertura'
+        summaryFileLocation: '$(System.DefaultWorkingDirectory)/cluster-autoscaler/coverage.xml'
+      displayName: 'Publish Coverage'
