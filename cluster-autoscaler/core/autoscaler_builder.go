@@ -144,6 +144,10 @@ func (b *AutoscalerBuilderImpl) Build() (Autoscaler, errors.AutoscalerError) {
 }
 
 // updateAutoScalerProfile updated config.AutoscalingOptions based on the provided autoscalerProfile
+// In order to configure the scaling options, we can either set the 'autoScalingOptions' or use flags.
+// If the desired parameters are included in 'autoScalingOptions', they will be accessed from there. Otherwise, we
+// can find the values in the global variables defined in 'main.go', which are initialized using flags or default values.
+// The 'updateAutoScalerProfile()' function is responsible for retrieving values from the dynamic configuration aka 'configMap'.
 func (b *AutoscalerBuilderImpl) updateAutoScalerProfile(autoscalingOptions config.AutoscalingOptions) config.AutoscalingOptions {
 	c := *(b.dynamicConfig)
 	autoScalerProfile := c.AutoScalerProfile
@@ -275,11 +279,17 @@ func (b *AutoscalerBuilderImpl) updateAutoScalerProfile(autoscalingOptions confi
 	}
 
 	if autoScalerProfile.SkipNodesWithLocalStorage != "" {
-		flag.Set("skip-nodes-with-local-storage", autoScalerProfile.SkipNodesWithLocalStorage)
+		skipNodesWithLocalStorage, _ := strconv.ParseBool(autoScalerProfile.SkipNodesWithLocalStorage)
+		autoscalingOptions.SkipNodesWithLocalStorage = skipNodesWithLocalStorage
 	}
 
 	if autoScalerProfile.SkipNodesWithSystemPods != "" {
-		flag.Set("skip-nodes-with-system-pods", autoScalerProfile.SkipNodesWithSystemPods)
+		skipNodesWithSystemPods, _ := strconv.ParseBool(autoScalerProfile.SkipNodesWithSystemPods)
+		autoscalingOptions.SkipNodesWithSystemPods = skipNodesWithSystemPods
+	}
+
+	if autoScalerProfile.EnableQOSLogging != "" {
+		flag.Set("enable-qos-logging", autoScalerProfile.EnableQOSLogging)
 	}
 
 	if autoScalerProfile.ScanInterval != "" {
