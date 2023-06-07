@@ -79,6 +79,8 @@ func createAzureManagerInternal(configReader io.Reader, discoveryOpts cloudprovi
 	cfg.EnableDynamicInstanceList = autoScalingOpts.EnableDynamicInstanceList
 	cfg.EnableDetailedCSEMessage = autoScalingOpts.EnableDetailedCSEMessage
 
+	klog.Infof("Autoscaling options: %+v", autoScalingOpts)
+
 	klog.Infof("Starting azure manager with subscription ID %q", cfg.SubscriptionID)
 
 	if azClient == nil {
