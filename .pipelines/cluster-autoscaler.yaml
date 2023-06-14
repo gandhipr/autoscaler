@@ -16,7 +16,7 @@ variables:
 
 jobs:
   - job: cluster_autoscaler_test
-    pool: staging-pool
+    pool: staging-pool-amd64-mariner-2
     displayName: Autoscaler Unit Tests
     workspace:
       clean: all
