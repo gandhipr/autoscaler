@@ -148,6 +148,11 @@ func (b *AutoscalerBuilderImpl) Build() (Autoscaler, errors.AutoscalerError) {
 // If the desired parameters are included in 'autoScalingOptions', they will be accessed from there. Otherwise, we
 // can find the values in the global variables defined in 'main.go', which are initialized using flags or default values.
 // The 'updateAutoScalerProfile()' function is responsible for retrieving values from the dynamic configuration aka 'configMap'.
+//
+// WARNING: Changes may not be effective if the value is already used before the main loop in main.go/run() starts.
+// This warning mostly applies to, but not limited to flag updates.
+// Even if a flag is a reference, its value could be copied to another variable already.
+// If the config is not dynamic or not exposed via autoscaler profile, consider passing the flag directly via addon chart.
 func (b *AutoscalerBuilderImpl) updateAutoScalerProfile(autoscalingOptions config.AutoscalingOptions) config.AutoscalingOptions {
 	c := *(b.dynamicConfig)
 	autoScalerProfile := c.AutoScalerProfile

@@ -100,6 +100,7 @@ func multiStringFlag(name string, usage string) *MultiStringFlag {
 	return value
 }
 
+// These defaults and initial parse-in values could be overridden by autoscalerProfile, taken in by dynamic configuration.
 var (
 	clusterName             = flag.String("cluster-name", "", "Autoscaled cluster name, if available")
 	address                 = flag.String("address", ":8085", "The address to expose prometheus metrics.")
