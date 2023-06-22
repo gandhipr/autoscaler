@@ -55,6 +55,7 @@ func TestUpdateAutoScalerProfile(t *testing.T) {
 				MaxTotalUnreadyPercentage:         "0.2",
 				DaemonSetEvictionForEmptyNodes:    "true",
 				DaemonSetEvictionForOccupiedNodes: "true",
+				IgnoreDaemonSetsUtilization:       "true",
 				EnableQOSLogging:                  "true",
 				SkipNodesWithLocalStorage:         "true",
 				SkipNodesWithSystemPods:           "true",
@@ -92,6 +93,7 @@ func TestUpdateAutoScalerProfile(t *testing.T) {
 	assert.True(t, updatedAutoscalingOptions.BalanceSimilarNodeGroups)
 	assert.True(t, updatedAutoscalingOptions.DaemonSetEvictionForEmptyNodes)
 	assert.True(t, updatedAutoscalingOptions.DaemonSetEvictionForOccupiedNodes)
+	assert.True(t, updatedAutoscalingOptions.IgnoreDaemonSetsUtilization)
 
 	// Check the string values
 	assert.Equal(t, "test", updatedAutoscalingOptions.ExpanderNames)

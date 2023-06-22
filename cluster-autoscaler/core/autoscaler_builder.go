@@ -288,6 +288,11 @@ func (b *AutoscalerBuilderImpl) updateAutoScalerProfile(autoscalingOptions confi
 		autoscalingOptions.DaemonSetEvictionForOccupiedNodes = daemonSetEvictionForOccupiedNodes
 	}
 
+	if autoScalerProfile.IgnoreDaemonSetsUtilization != "" {
+		ignoreDaemonSetsUtilization, _ := strconv.ParseBool(autoScalerProfile.IgnoreDaemonSetsUtilization)
+		autoscalingOptions.IgnoreDaemonSetsUtilization = ignoreDaemonSetsUtilization
+	}
+
 	if autoScalerProfile.SkipNodesWithLocalStorage != "" {
 		skipNodesWithLocalStorage, _ := strconv.ParseBool(autoScalerProfile.SkipNodesWithLocalStorage)
 		autoscalingOptions.SkipNodesWithLocalStorage = skipNodesWithLocalStorage

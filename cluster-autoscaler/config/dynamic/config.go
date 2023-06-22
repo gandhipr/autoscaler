@@ -58,6 +58,7 @@ type AutoScalerProfile struct {
 	MaxCloudProviderNodeDeletionTime  string `json:"max-cloud-provider-node-deletion-time,omitempty" yaml:"max-cloud-provider-node-deletion-time,omitempty"`
 	DaemonSetEvictionForEmptyNodes    string `json:"daemonset-eviction-for-empty-nodes,omitempty" yaml:"daemonset-eviction-for-empty-nodes,omitempty"`
 	DaemonSetEvictionForOccupiedNodes string `json:"daemonset-eviction-for-occupied-nodes,omitempty" yaml:"daemonset-eviction-for-occupied-nodes,omitempty"`
+	IgnoreDaemonSetsUtilization       string `json:"ignore-daemonsets-utilization,omitempty" yaml:"ignore-daemonsets-utilization,omitempty"`
 }
 
 // Config holds the dynamic configuration of autoscaler which can be refreshed at runtime
