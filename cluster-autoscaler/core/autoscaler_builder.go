@@ -261,6 +261,11 @@ func (b *AutoscalerBuilderImpl) updateAutoScalerProfile(autoscalingOptions confi
 	if autoScalerProfile.MaxEmptyBulkDelete != "" {
 		maxEmptyBulkDelete, _ := strconv.Atoi(autoScalerProfile.MaxEmptyBulkDelete)
 		autoscalingOptions.MaxEmptyBulkDelete = maxEmptyBulkDelete
+
+		// We don't currently ever enter parallel bulk delete mode,
+		// but the actuator still will respect this flag and its default of 10.
+		// We want to respect MaxEmptyBulkDelete, and delete up to maxEmptyBulkDelete nodes in parallel.
+		autoscalingOptions.MaxScaleDownParallelism = maxEmptyBulkDelete
 	}
 
 	if autoScalerProfile.OkTotalUnreadyCount != "" {
