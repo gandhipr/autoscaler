@@ -29,6 +29,7 @@ func TestUpdateAutoScalerProfile(t *testing.T) {
 	b := &AutoscalerBuilderImpl{
 		dynamicConfig: &dynamic.Config{
 			AutoScalerProfile: dynamic.AutoScalerProfile{
+				UnremovableNodeRecheckTimeout:     "1m",
 				ScaleDownDelayAfterAdd:            "10s",
 				ScaleDownDelayAfterDelete:         "20s",
 				ScaleDownDelayAfterFailure:        "30s",
@@ -84,6 +85,7 @@ func TestUpdateAutoScalerProfile(t *testing.T) {
 	assert.Equal(t, 60*time.Second, updatedAutoscalingOptions.MaxCloudProviderNodeDeletionTime)
 	assert.Equal(t, 70*time.Second, updatedAutoscalingOptions.MaxNodeProvisionTime)
 	assert.Equal(t, 80*time.Second, updatedAutoscalingOptions.GetVmssSizeRefreshPeriod)
+	assert.Equal(t, 60*time.Second, updatedAutoscalingOptions.UnremovableNodeRecheckTimeout)
 
 	// Continue with the boolean values
 	assert.True(t, updatedAutoscalingOptions.EnableGetVmss)

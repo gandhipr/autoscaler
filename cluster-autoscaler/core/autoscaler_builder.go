@@ -157,6 +157,11 @@ func (b *AutoscalerBuilderImpl) updateAutoScalerProfile(autoscalingOptions confi
 	c := *(b.dynamicConfig)
 	autoScalerProfile := c.AutoScalerProfile
 
+	if autoScalerProfile.UnremovableNodeRecheckTimeout != "" {
+		unremovableNodeRecheckTimeout, _ := time.ParseDuration(autoScalerProfile.UnremovableNodeRecheckTimeout)
+		autoscalingOptions.UnremovableNodeRecheckTimeout = unremovableNodeRecheckTimeout
+	}
+
 	if autoScalerProfile.ScaleDownDelayAfterAdd != "" {
 		scaleDownDelayAfterAdd, _ := time.ParseDuration(autoScalerProfile.ScaleDownDelayAfterAdd)
 		autoscalingOptions.ScaleDownDelayAfterAdd = scaleDownDelayAfterAdd

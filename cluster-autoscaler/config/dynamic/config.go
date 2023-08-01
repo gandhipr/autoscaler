@@ -59,6 +59,7 @@ type AutoScalerProfile struct {
 	DaemonSetEvictionForEmptyNodes    string `json:"daemonset-eviction-for-empty-nodes,omitempty" yaml:"daemonset-eviction-for-empty-nodes,omitempty"`
 	DaemonSetEvictionForOccupiedNodes string `json:"daemonset-eviction-for-occupied-nodes,omitempty" yaml:"daemonset-eviction-for-occupied-nodes,omitempty"`
 	IgnoreDaemonSetsUtilization       string `json:"ignore-daemonsets-utilization,omitempty" yaml:"ignore-daemonsets-utilization,omitempty"`
+	UnremovableNodeRecheckTimeout     string `json:"unremovable-node-recheck-timeout,omitempty" yaml:"unremovable-node-recheck-timeout,omitempty"`
 }
 
 // Config holds the dynamic configuration of autoscaler which can be refreshed at runtime
