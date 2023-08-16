@@ -79,6 +79,15 @@ func TestIsAzureNodeInfoSimilar(t *testing.T) {
 	n1.ObjectMeta.Labels["example.com/ready"] = "true"
 	n2.ObjectMeta.Labels["example.com/ready"] = "false"
 	checkNodesSimilar(t, n1, n2, comparator, true)
+	// One node with aksConsolidatedAdditionalProperties label
+	n1.ObjectMeta.Labels[aksConsolidatedAdditionalProperties] = "foo"
+	checkNodesSimilar(t, n1, n2, comparator, true)
+	// Same aksConsolidatedAdditionalProperties
+	n2.ObjectMeta.Labels[aksConsolidatedAdditionalProperties] = "foo"
+	checkNodesSimilar(t, n1, n2, comparator, true)
+	// Different aksConsolidatedAdditionalProperties label
+	n2.ObjectMeta.Labels[aksConsolidatedAdditionalProperties] = "bar"
+	checkNodesSimilar(t, n1, n2, comparator, true)
 }
 
 func TestFindSimilarNodeGroupsAzureBasic(t *testing.T) {

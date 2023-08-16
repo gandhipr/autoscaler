@@ -35,6 +35,7 @@ const aksEngineVersionLabel = "aksEngineVersion"
 const creationSource = "creationSource"
 const poolName = "poolName"
 const resourceNameSuffix = "resourceNameSuffix"
+const aksConsolidatedAdditionalProperties = "kubernetes.azure.com/consolidated-additional-properties"
 
 // AKS node image version
 const aksNodeImageVersion = "kubernetes.azure.com/node-image-version"
@@ -67,6 +68,7 @@ func CreateAzureNodeInfoComparator(extraIgnoredLabels []string, ratioOpts config
 	azureIgnoredLabels[poolName] = true
 	azureIgnoredLabels[resourceNameSuffix] = true
 	azureIgnoredLabels[aksNodeImageVersion] = true
+	azureIgnoredLabels[aksConsolidatedAdditionalProperties] = true
 
 	for _, k := range extraIgnoredLabels {
 		azureIgnoredLabels[k] = true
