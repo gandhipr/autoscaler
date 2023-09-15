@@ -29,6 +29,8 @@ import (
 	"syscall"
 	"time"
 
+	"k8s.io/component-base/config/options"
+
 	"k8s.io/autoscaler/cluster-autoscaler/core/scaledown/actuation"
 	"k8s.io/autoscaler/cluster-autoscaler/debuggingsnapshot"
 	"k8s.io/autoscaler/cluster-autoscaler/simulator/predicatechecker"
@@ -58,7 +60,6 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/processors/scaledowncandidates/previouscandidates"
 	"k8s.io/autoscaler/cluster-autoscaler/simulator/clustersnapshot"
 	"k8s.io/autoscaler/cluster-autoscaler/simulator/drainability/rules"
-	"k8s.io/autoscaler/cluster-autoscaler/simulator/options"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/errors"
 	kube_util "k8s.io/autoscaler/cluster-autoscaler/utils/kubernetes"
 	scheduler_util "k8s.io/autoscaler/cluster-autoscaler/utils/scheduler"
@@ -620,8 +621,8 @@ func main() {
 
 	leaderElection := defaultLeaderElectionConfiguration()
 	leaderElection.LeaderElect = true
-	componentopts.BindLeaderElectionFlags(&leaderElection, pflag.CommandLine)
 
+	componentopts.BindLeaderElectionFlags(&leaderElection, pflag.CommandLine)
 	featureGate := utilfeature.DefaultMutableFeatureGate
 	loggingConfig := logsapi.NewLoggingConfiguration()
 
