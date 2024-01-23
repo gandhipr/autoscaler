@@ -241,6 +241,8 @@ type AutoscalingOptions struct {
 	ClusterAPICloudConfigAuthoritative bool
 	// Enable or disable cordon nodes functionality before terminating the node during downscale process
 	CordonNodeBeforeTerminate bool
+	// IgnoreDaemonSetsUtilization sets if daemonsets utilization should be considered during node scale-down
+	IgnoreDaemonSetsUtilization bool
 	// DaemonSetEvictionForEmptyNodes is whether CA will gracefully terminate DaemonSet pods from empty nodes.
 	DaemonSetEvictionForEmptyNodes bool
 	// DaemonSetEvictionForOccupiedNodes is whether CA will gracefully terminate DaemonSet pods from non-empty nodes.

@@ -57,7 +57,6 @@ func TestUpdateAutoScalerProfile(t *testing.T) {
 				DaemonSetEvictionForEmptyNodes:    "true",
 				DaemonSetEvictionForOccupiedNodes: "true",
 				IgnoreDaemonSetsUtilization:       "true",
-				EnableQOSLogging:                  "true",
 				SkipNodesWithLocalStorage:         "true",
 				SkipNodesWithSystemPods:           "true",
 				ScanInterval:                      "5m",
