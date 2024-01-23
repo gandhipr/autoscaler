@@ -101,7 +101,6 @@ func TestExtractTaintsFromScaleSet(t *testing.T) {
 	assert.Equal(t, makeTaintSet(expectedTaints), makeTaintSet(taints))
 }
 
-
 func TestExtractTaintsFromSpecString(t *testing.T) {
 	taintsString := []string{
 		"dedicated=foo:NoSchedule",
