@@ -18,7 +18,7 @@ package azure
 
 import (
 	"encoding/json"
-	"errors"
+	err_ "errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -132,9 +132,19 @@ type Config struct {
 
 	// EnableDynamicInstanceList defines whether to enable dynamic instance workflow for instance information check
 	EnableDynamicInstanceList bool `json:"enableDynamicInstanceList,omitempty" yaml:"enableDynamicInstanceList,omitempty"`
-
 	// EnableVmssFlex defines whether to enable Vmss Flex support or not
 	EnableVmssFlex bool `json:"enableVmssFlex,omitempty" yaml:"enableVmssFlex,omitempty"`
+	// EnableDetailedCSEMessage defines whether to emit error messages in the CSE error body info
+	EnableDetailedCSEMessage bool `json:"enableDetailedCSEMessage,omitempty" yaml:"enableDetailedCSEMessage,omitempty"`
+	// EnableForceDelete defines whether to enable force deletion on the APIs
+	EnableForceDelete bool `json:"enableForceDelete,omitempty" yaml:"enableForceDelete,omitempty"`
+
+	// EnableGetVmss defines whether to enable making a call to GET VMSS to fetch fresh capacity info
+	// The TTL for this cache is controlled by the GetVmssSizeRefreshPeriod interval
+	EnableGetVmss bool `json:"enableGetVmss,omitempty" yaml:"enableGetVmss,omitempty"`
+
+	// GetVmssSizeRefreshPeriod defines how frequently to call GET VMSS API to fetch VMSS info per nodegroup instance
+	GetVmssSizeRefreshPeriod time.Duration `json:"getVmssSizeRefreshPeriod,omitempty" yaml:"getVmssSizeRefreshPeriod,omitempty"`
 }
 
 // BuildAzureConfig returns a Config object for the Azure clients
@@ -193,7 +203,7 @@ func BuildAzureConfig(configReader io.Reader) (*Config, error) {
 		}
 
 		if cfg.UseManagedIdentityExtension && cfg.UseWorkloadIdentityExtension {
-			return nil, errors.New("you can not combine both managed identity and workload identity as an authentication mechanism")
+			return nil, err_.New("you can not combine both managed identity and workload identity as an authentication mechanism")
 		}
 
 		userAssignedIdentityIDFromEnv := os.Getenv("ARM_USER_ASSIGNED_IDENTITY_ID")
@@ -499,7 +509,7 @@ func (cfg *Config) validate() error {
 	switch cfg.AuthMethod {
 	case "", authMethodPrincipal:
 		if cfg.AADClientID == "" {
-			return errors.New("ARM Client ID not set")
+			return err_.New("ARM Client ID not set")
 		}
 	case authMethodCLI:
 		// Nothing to check at the moment.

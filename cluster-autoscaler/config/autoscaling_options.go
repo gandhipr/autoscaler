@@ -132,6 +132,13 @@ type AutoscalingOptions struct {
 	// This field is optional and could be nil.
 	// DrainPriorityConfig takes higher precedence and MaxGracefulTerminationSec will not be applicable when the DrainPriorityConfig is set.
 	DrainPriorityConfig []kubelet_config.ShutdownGracePeriodByPodPriority
+	// MaxCloudProviderNodeDeletionTime is the maximum time needed by cloud provider to delete a node
+	MaxCloudProviderNodeDeletionTime time.Duration
+	// MaxKubernetesEmptyNodeDeletionTime is the maximum time needed by Kubernetes to delete an empty node
+	MaxKubernetesEmptyNodeDeletionTime time.Duration
+	//  Maximum time CA waits for node to be provisioned
+	//  MaxNodeProvisionTime defines maximum time CA waits for node to be provisioned
+	MaxNodeProvisionTime time.Duration
 	// MaxTotalUnreadyPercentage is the maximum percentage of unready nodes after which CA halts operations
 	MaxTotalUnreadyPercentage float64
 	// OkTotalUnreadyCount is the number of allowed unready nodes, irrespective of max-total-unready-percentage
@@ -234,6 +241,8 @@ type AutoscalingOptions struct {
 	ClusterAPICloudConfigAuthoritative bool
 	// Enable or disable cordon nodes functionality before terminating the node during downscale process
 	CordonNodeBeforeTerminate bool
+	// IgnoreDaemonSetsUtilization sets if daemonsets utilization should be considered during node scale-down
+	IgnoreDaemonSetsUtilization bool
 	// DaemonSetEvictionForEmptyNodes is whether CA will gracefully terminate DaemonSet pods from empty nodes.
 	DaemonSetEvictionForEmptyNodes bool
 	// DaemonSetEvictionForOccupiedNodes is whether CA will gracefully terminate DaemonSet pods from non-empty nodes.
@@ -281,6 +290,16 @@ type AutoscalingOptions struct {
 	DynamicNodeDeleteDelayAfterTaintEnabled bool
 	// BypassedSchedulers are used to specify which schedulers to bypass their processing
 	BypassedSchedulers map[string]bool
+	// EnableForceDelete uses force deletion on the Azure API to remove instances
+	EnableForceDelete bool
+	// EnableDynamicInstanceList enables dynamic instance workflow for vmss check
+	EnableDynamicInstanceList bool
+	// EnableDetailedCSEMessage enables emitting error messages in CSE error body
+	EnableDetailedCSEMessage bool
+	// EnableGetVmss enables get VMSS calls for nodegroups
+	EnableGetVmss bool
+	// GetVmssSizeRefreshPeriod is the TTL for GET VMSS cache
+	GetVmssSizeRefreshPeriod time.Duration
 }
 
 // KubeClientOptions specify options for kube client

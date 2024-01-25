@@ -38,6 +38,7 @@ import (
 
 	"golang.org/x/crypto/pkcs12"
 
+	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/version"
 	klog "k8s.io/klog/v2"
 	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
@@ -62,6 +63,12 @@ const (
 	rtResourceType  = "Microsoft.Network/routeTables"
 	vmResourceType  = "Microsoft.Compute/virtualMachines"
 	vmExtensionType = "Microsoft.Compute/virtualMachines/extensions"
+
+	// CSE Extension checks
+	vmssCSEExtensionName            = "vmssCSE"
+	vmssExtensionProvisioningFailed = "VMExtensionProvisioningFailed"
+	// vmExtensionProvisioningErrorClass represents a Vm extension provisioning error
+	vmExtensionProvisioningErrorClass cloudprovider.InstanceErrorClass = 103
 
 	// resource ids
 	nsgID = "nsgID"
@@ -224,7 +231,6 @@ func (util *AzUtil) DeleteVirtualMachine(rg string, name string) error {
 			klog.V(2).Infof("disk %s/%s removed", rg, *osDiskName)
 		}
 	}
-
 	return nil
 }
 
@@ -244,7 +250,7 @@ func decodePkcs12(pkcs []byte, password string) (*x509.Certificate, *rsa.Private
 }
 
 func getUserAgentExtension() string {
-	return fmt.Sprintf("cluster-autoscaler/v%s", version.ClusterAutoscalerVersion)
+	return fmt.Sprintf("cluster-autoscaler-aks/v%s", version.ClusterAutoscalerVersion)
 }
 
 func configureUserAgent(client *autorest.Client) {
@@ -646,4 +652,42 @@ func vmPowerStateFromStatuses(statuses []compute.InstanceViewStatus) string {
 
 	// PowerState is not set if the VM is still creating (or has failed creation)
 	return vmPowerStateUnknown
+}
+
+func powerStateRunning(state string) bool {
+	return powerStateExpectedMatchesActual(vmPowerStateRunning, state)
+}
+
+func powerStateDeallocating(state string) bool {
+	return powerStateExpectedMatchesActual(vmPowerStateDeallocating, state)
+}
+func powerStateDeallocated(state string) bool {
+	return powerStateExpectedMatchesActual(vmPowerStateDeallocated, state)
+}
+func powerStateExpectedMatchesActual(expected, actual string) bool {
+	return strings.EqualFold(actual, expected)
+}
+
+func getProviderID(resourceID string) (string, error) {
+	// The resource ID is empty string, which indicates the instance may be in deleting state.
+	if resourceID == "" {
+		return "", nil
+	}
+	resourceID, err := convertResourceGroupNameToLower(resourceID)
+	if err != nil {
+		return "", err
+	}
+	return azurePrefix + resourceID, nil
+}
+
+func isNotStarted(vmInstanceView *compute.VirtualMachineScaleSetVMInstanceView) bool {
+	if vmInstanceView != nil && vmInstanceView.Statuses != nil {
+		statuses := *vmInstanceView.Statuses
+		for _, s := range statuses {
+			if !powerStateRunning(to.String(s.Code)) {
+				return true
+			}
+		}
+	}
+	return false
 }

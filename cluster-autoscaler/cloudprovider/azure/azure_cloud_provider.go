@@ -31,7 +31,8 @@ import (
 
 const (
 	// GPULabel is the label added to nodes with GPU resource.
-	GPULabel = "accelerator"
+	GPULabel       = AKSLabelKeyPrefixValue + "accelerator"
+	legacyGPULabel = "accelerator"
 )
 
 var (
@@ -176,7 +177,7 @@ func BuildAzure(opts config.AutoscalingOptions, do cloudprovider.NodeGroupDiscov
 	} else {
 		klog.Info("Creating Azure Manager with default configuration.")
 	}
-	manager, err := CreateAzureManager(config, do)
+	manager, err := CreateAzureManager(config, do, opts)
 	if err != nil {
 		klog.Fatalf("Failed to create Azure Manager: %v", err)
 	}

@@ -21,6 +21,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strconv"
@@ -43,6 +44,7 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	cloudBuilder "k8s.io/autoscaler/cluster-autoscaler/cloudprovider/builder"
 	"k8s.io/autoscaler/cluster-autoscaler/config"
+	"k8s.io/autoscaler/cluster-autoscaler/config/dynamic"
 	"k8s.io/autoscaler/cluster-autoscaler/core"
 	"k8s.io/autoscaler/cluster-autoscaler/core/podlistprocessor"
 	"k8s.io/autoscaler/cluster-autoscaler/estimator"
@@ -56,7 +58,7 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/processors/scaledowncandidates/previouscandidates"
 	"k8s.io/autoscaler/cluster-autoscaler/simulator/clustersnapshot"
 	"k8s.io/autoscaler/cluster-autoscaler/simulator/drainability/rules"
-	"k8s.io/autoscaler/cluster-autoscaler/simulator/options"
+	simulatoropts "k8s.io/autoscaler/cluster-autoscaler/simulator/options"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/errors"
 	kube_util "k8s.io/autoscaler/cluster-autoscaler/utils/kubernetes"
 	scheduler_util "k8s.io/autoscaler/cluster-autoscaler/utils/scheduler"
@@ -64,6 +66,7 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/version"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	kube_flag "k8s.io/component-base/cli/flag"
@@ -97,6 +100,7 @@ func multiStringFlag(name string, usage string) *MultiStringFlag {
 	return value
 }
 
+// These defaults and initial parse-in values could be overridden by autoscalerProfile, taken in by dynamic configuration.
 var (
 	clusterName             = flag.String("cluster-name", "", "Autoscaled cluster name, if available")
 	address                 = flag.String("address", ":8085", "The address to expose prometheus metrics.")
@@ -156,13 +160,15 @@ var (
 	maxEmptyBulkDeleteFlag     = flag.Int("max-empty-bulk-delete", 10, "Maximum number of empty nodes that can be deleted at the same time.")
 	maxGracefulTerminationFlag = flag.Int("max-graceful-termination-sec", 10*60, "Maximum number of seconds CA waits for pod termination when trying to scale down a node. "+
 		"This flag is mutually exclusion with drain-priority-config flag which allows more configuration options.")
-	maxTotalUnreadyPercentage = flag.Float64("max-total-unready-percentage", 45, "Maximum percentage of unready nodes in the cluster.  After this is exceeded, CA halts operations")
-	okTotalUnreadyCount       = flag.Int("ok-total-unready-count", 3, "Number of allowed unready nodes, irrespective of max-total-unready-percentage")
-	scaleUpFromZero           = flag.Bool("scale-up-from-zero", true, "Should CA scale up when there are 0 ready nodes.")
-	parallelScaleUp           = flag.Bool("parallel-scale-up", false, "Whether to allow parallel node groups scale up. Experimental: may not work on some cloud providers, enable at your own risk.")
-	maxNodeProvisionTime      = flag.Duration("max-node-provision-time", 15*time.Minute, "The default maximum time CA waits for node to be provisioned - the value can be overridden per node group")
-	maxPodEvictionTime        = flag.Duration("max-pod-eviction-time", 2*time.Minute, "Maximum time CA tries to evict a pod before giving up")
-	nodeGroupsFlag            = multiStringFlag(
+	maxTotalUnreadyPercentage          = flag.Float64("max-total-unready-percentage", 45, "Maximum percentage of unready nodes in the cluster.  After this is exceeded, CA halts operations")
+	okTotalUnreadyCount                = flag.Int("ok-total-unready-count", 3, "Number of allowed unready nodes, irrespective of max-total-unready-percentage")
+	scaleUpFromZero                    = flag.Bool("scale-up-from-zero", true, "Should CA scale up when there are 0 ready nodes.")
+	parallelScaleUp                    = flag.Bool("parallel-scale-up", false, "Whether to allow parallel node groups scale up. Experimental: may not work on some cloud providers, enable at your own risk.")
+	maxCloudProviderNodeDeletionTime   = flag.Duration("max-cloud-provider-node-deletion-time", 5*time.Minute, "Maximum time needed by cloud provider to delete a node")
+	maxKubernetesEmptyNodeDeletionTime = flag.Duration("max-kubernetes-empty-node-deletion-time", 3*time.Minute, "Maximum time needed by cloud provider to delete a node")
+	maxNodeProvisionTime               = flag.Duration("max-node-provision-time", 15*time.Minute, "The default maximum time CA waits for node to be provisioned - the value can be overridden per node group")
+	maxPodEvictionTime                 = flag.Duration("max-pod-eviction-time", 2*time.Minute, "Maximum time CA tries to evict a pod before giving up")
+	nodeGroupsFlag                     = multiStringFlag(
 		"nodes",
 		"sets min,max size and other configuration data for a node group in a format accepted by cloud provider. Can be used multiple times. Format: <min>:<max>:<other...>")
 	nodeGroupAutoDiscoveryFlag = multiStringFlag(
@@ -220,8 +226,7 @@ var (
 	emitPerNodeGroupMetrics            = flag.Bool("emit-per-nodegroup-metrics", false, "If true, emit per node group metrics.")
 	debuggingSnapshotEnabled           = flag.Bool("debugging-snapshot-enabled", false, "Whether the debugging snapshot of cluster autoscaler feature is enabled")
 	nodeInfoCacheExpireTime            = flag.Duration("node-info-cache-expire-time", 87600*time.Hour, "Node Info cache expire time for each item. Default value is 10 years.")
-
-	initialNodeGroupBackoffDuration = flag.Duration("initial-node-group-backoff-duration", 5*time.Minute,
+	initialNodeGroupBackoffDuration    = flag.Duration("initial-node-group-backoff-duration", 5*time.Minute,
 		"initialNodeGroupBackoffDuration is the duration of first backoff after a new node failed to start.")
 	maxNodeGroupBackoffDuration = flag.Duration("max-node-group-backoff-duration", 30*time.Minute,
 		"maxNodeGroupBackoffDuration is the maximum backoff duration for a NodeGroup after new nodes failed to start.")
@@ -250,6 +255,12 @@ var (
 			"--max-graceful-termination-sec flag should not be set when this flag is set. Not setting this flag will use unordered evictor by default."+
 			"Priority evictor reuses the concepts of drain logic in kubelet(https://github.com/kubernetes/enhancements/tree/master/keps/sig-node/2712-pod-priority-based-graceful-node-shutdown#migration-from-the-node-graceful-shutdown-feature)."+
 			"Eg. flag usage:  '10000:20,1000:100,0:60'")
+	configPath                = flag.String("config-path", "", "The path for the mounted ConfigMap containing the settings used for dynamic reconfiguration. Set as empty string to use static mode.")
+	enableForceDelete         = flag.Bool("enable-force-delete", false, "Whether to enable force deletion")
+	enableDynamicInstanceList = flag.Bool("enable-dynamic-instance-list", false, "Whether to enable dynamic instance list workflow")
+	enableGetVmss             = flag.Bool("enable-get-vmss", false, "Whether to enable Get VMSS calls")
+	getVmssSizeRefreshPeriod  = flag.Duration("get-vmss-size-refresh-period", 30*time.Second, "TTL for the GET VMSS cache")
+	enableDetailedCSEMessage  = flag.Bool("enable-detailed-cse-message", false, "Whether to enable emitting error messages in CSE error body")
 )
 
 func isFlagPassed(name string) bool {
@@ -331,56 +342,58 @@ func createAutoscalingOptions() config.AutoscalingOptions {
 			IgnoreDaemonSetsUtilization:      *ignoreDaemonSetsUtilization,
 			MaxNodeProvisionTime:             *maxNodeProvisionTime,
 		},
-		CloudConfig:                      *cloudConfig,
-		CloudProviderName:                *cloudProviderFlag,
-		NodeGroupAutoDiscovery:           *nodeGroupAutoDiscoveryFlag,
-		MaxTotalUnreadyPercentage:        *maxTotalUnreadyPercentage,
-		OkTotalUnreadyCount:              *okTotalUnreadyCount,
-		ScaleUpFromZero:                  *scaleUpFromZero,
-		ParallelScaleUp:                  *parallelScaleUp,
-		EstimatorName:                    *estimatorFlag,
-		ExpanderNames:                    *expanderFlag,
-		GRPCExpanderCert:                 *grpcExpanderCert,
-		GRPCExpanderURL:                  *grpcExpanderURL,
-		IgnoreMirrorPodsUtilization:      *ignoreMirrorPodsUtilization,
-		MaxBulkSoftTaintCount:            *maxBulkSoftTaintCount,
-		MaxBulkSoftTaintTime:             *maxBulkSoftTaintTime,
-		MaxEmptyBulkDelete:               *maxEmptyBulkDeleteFlag,
-		MaxGracefulTerminationSec:        *maxGracefulTerminationFlag,
-		MaxPodEvictionTime:               *maxPodEvictionTime,
-		MaxNodesTotal:                    *maxNodesTotal,
-		MaxCoresTotal:                    maxCoresTotal,
-		MinCoresTotal:                    minCoresTotal,
-		MaxMemoryTotal:                   maxMemoryTotal,
-		MinMemoryTotal:                   minMemoryTotal,
-		GpuTotal:                         parsedGpuTotal,
-		NodeGroups:                       *nodeGroupsFlag,
-		EnforceNodeGroupMinSize:          *enforceNodeGroupMinSize,
-		ScaleDownDelayAfterAdd:           *scaleDownDelayAfterAdd,
-		ScaleDownDelayAfterDelete:        *scaleDownDelayAfterDelete,
-		ScaleDownDelayAfterFailure:       *scaleDownDelayAfterFailure,
-		ScaleDownEnabled:                 *scaleDownEnabled,
-		ScaleDownUnreadyEnabled:          *scaleDownUnreadyEnabled,
-		ScaleDownNonEmptyCandidatesCount: *scaleDownNonEmptyCandidatesCount,
-		ScaleDownCandidatesPoolRatio:     *scaleDownCandidatesPoolRatio,
-		ScaleDownCandidatesPoolMinCount:  *scaleDownCandidatesPoolMinCount,
-		DrainPriorityConfig:              drainPriorityConfigMap,
-		SchedulerConfig:                  parsedSchedConfig,
-		WriteStatusConfigMap:             *writeStatusConfigMapFlag,
-		StatusConfigMapName:              *statusConfigMapName,
-		BalanceSimilarNodeGroups:         *balanceSimilarNodeGroupsFlag,
-		ConfigNamespace:                  *namespace,
-		ClusterName:                      *clusterName,
-		NodeAutoprovisioningEnabled:      *nodeAutoprovisioningEnabled,
-		MaxAutoprovisionedNodeGroupCount: *maxAutoprovisionedNodeGroupCount,
-		UnremovableNodeRecheckTimeout:    *unremovableNodeRecheckTimeout,
-		ExpendablePodsPriorityCutoff:     *expendablePodsPriorityCutoff,
-		Regional:                         *regional,
-		NewPodScaleUpDelay:               *newPodScaleUpDelay,
-		StartupTaints:                    append(*ignoreTaintsFlag, *startupTaintsFlag...),
-		StatusTaints:                     *statusTaintsFlag,
-		BalancingExtraIgnoredLabels:      *balancingIgnoreLabelsFlag,
-		BalancingLabels:                  *balancingLabelsFlag,
+		CloudConfig:                        *cloudConfig,
+		CloudProviderName:                  *cloudProviderFlag,
+		NodeGroupAutoDiscovery:             *nodeGroupAutoDiscoveryFlag,
+		MaxTotalUnreadyPercentage:          *maxTotalUnreadyPercentage,
+		OkTotalUnreadyCount:                *okTotalUnreadyCount,
+		ScaleUpFromZero:                    *scaleUpFromZero,
+		ParallelScaleUp:                    *parallelScaleUp,
+		EstimatorName:                      *estimatorFlag,
+		ExpanderNames:                      *expanderFlag,
+		GRPCExpanderCert:                   *grpcExpanderCert,
+		GRPCExpanderURL:                    *grpcExpanderURL,
+		IgnoreMirrorPodsUtilization:        *ignoreMirrorPodsUtilization,
+		MaxBulkSoftTaintCount:              *maxBulkSoftTaintCount,
+		MaxBulkSoftTaintTime:               *maxBulkSoftTaintTime,
+		MaxEmptyBulkDelete:                 *maxEmptyBulkDeleteFlag,
+		MaxCloudProviderNodeDeletionTime:   *maxCloudProviderNodeDeletionTime,
+		MaxKubernetesEmptyNodeDeletionTime: *maxKubernetesEmptyNodeDeletionTime,
+		MaxGracefulTerminationSec:          *maxGracefulTerminationFlag,
+		MaxPodEvictionTime:                 *maxPodEvictionTime,
+		MaxNodesTotal:                      *maxNodesTotal,
+		MaxCoresTotal:                      maxCoresTotal,
+		MinCoresTotal:                      minCoresTotal,
+		MaxMemoryTotal:                     maxMemoryTotal,
+		MinMemoryTotal:                     minMemoryTotal,
+		GpuTotal:                           parsedGpuTotal,
+		NodeGroups:                         *nodeGroupsFlag,
+		EnforceNodeGroupMinSize:            *enforceNodeGroupMinSize,
+		ScaleDownDelayAfterAdd:             *scaleDownDelayAfterAdd,
+		ScaleDownDelayAfterDelete:          *scaleDownDelayAfterDelete,
+		ScaleDownDelayAfterFailure:         *scaleDownDelayAfterFailure,
+		ScaleDownEnabled:                   *scaleDownEnabled,
+		ScaleDownUnreadyEnabled:            *scaleDownUnreadyEnabled,
+		ScaleDownNonEmptyCandidatesCount:   *scaleDownNonEmptyCandidatesCount,
+		ScaleDownCandidatesPoolRatio:       *scaleDownCandidatesPoolRatio,
+		ScaleDownCandidatesPoolMinCount:    *scaleDownCandidatesPoolMinCount,
+		DrainPriorityConfig:                drainPriorityConfigMap,
+		SchedulerConfig:                    parsedSchedConfig,
+		WriteStatusConfigMap:               *writeStatusConfigMapFlag,
+		StatusConfigMapName:                *statusConfigMapName,
+		BalanceSimilarNodeGroups:           *balanceSimilarNodeGroupsFlag,
+		ConfigNamespace:                    *namespace,
+		ClusterName:                        *clusterName,
+		NodeAutoprovisioningEnabled:        *nodeAutoprovisioningEnabled,
+		MaxAutoprovisionedNodeGroupCount:   *maxAutoprovisionedNodeGroupCount,
+		UnremovableNodeRecheckTimeout:      *unremovableNodeRecheckTimeout,
+		ExpendablePodsPriorityCutoff:       *expendablePodsPriorityCutoff,
+		Regional:                           *regional,
+		NewPodScaleUpDelay:                 *newPodScaleUpDelay,
+		StartupTaints:                      append(*ignoreTaintsFlag, *startupTaintsFlag...),
+		StatusTaints:                       *statusTaintsFlag,
+		BalancingExtraIgnoredLabels:        *balancingIgnoreLabelsFlag,
+		BalancingLabels:                    *balancingLabelsFlag,
 		KubeClientOpts: config.KubeClientOptions{
 			Master:         *kubernetes,
 			KubeConfigPath: *kubeConfigFile,
@@ -420,7 +433,41 @@ func createAutoscalingOptions() config.AutoscalingOptions {
 		},
 		DynamicNodeDeleteDelayAfterTaintEnabled: *dynamicNodeDeleteDelayAfterTaintEnabled,
 		BypassedSchedulers:                      scheduler_util.GetBypassedSchedulersMap(*bypassedSchedulers),
+		EnableForceDelete:                       *enableForceDelete,
+		EnableDynamicInstanceList:               *enableDynamicInstanceList,
+		EnableGetVmss:                           *enableGetVmss,
+		GetVmssSizeRefreshPeriod:                *getVmssSizeRefreshPeriod,
+		EnableDetailedCSEMessage:                *enableDetailedCSEMessage,
 	}
+}
+
+func createConfigFetcherOptions() dynamic.ConfigFetcherOptions {
+	return dynamic.ConfigFetcherOptions{
+		ConfigPath: *configPath,
+	}
+}
+
+func getKubeConfig() *rest.Config {
+	if *kubeConfigFile != "" {
+		klog.V(1).Infof("Using kubeconfig file: %s", *kubeConfigFile)
+		// use the current context in kubeconfig
+		config, err := clientcmd.BuildConfigFromFlags("", *kubeConfigFile)
+		if err != nil {
+			klog.Fatalf("Failed to build config: %v", err)
+		}
+		return config
+	}
+	url, err := url.Parse(*kubernetes)
+	if err != nil {
+		klog.Fatalf("Failed to parse Kubernetes url: %v", err)
+	}
+
+	kubeConfig, err := config.GetKubeClientConfig(url)
+	if err != nil {
+		klog.Fatalf("Failed to build Kubernetes client configuration: %v", err)
+	}
+
+	return kubeConfig
 }
 
 func registerSignalHandlers(autoscaler core.Autoscaler) {
@@ -457,7 +504,7 @@ func buildAutoscaler(debuggingSnapshotter debuggingsnapshot.DebuggingSnapshotter
 	if err != nil {
 		return nil, err
 	}
-	deleteOptions := options.NewNodeDeleteOptions(autoscalingOptions)
+	deleteOptions := simulatoropts.NewNodeDeleteOptions(autoscalingOptions)
 	drainabilityRules := rules.Default(deleteOptions)
 
 	opts := core.AutoscalerOptions{
@@ -469,6 +516,7 @@ func buildAutoscaler(debuggingSnapshotter debuggingsnapshot.DebuggingSnapshotter
 		PredicateChecker:     predicateChecker,
 		DeleteOptions:        deleteOptions,
 		DrainabilityRules:    drainabilityRules,
+		ConfigFetcherOptions: createConfigFetcherOptions(),
 	}
 
 	opts.Processors = ca_processors.DefaultProcessors(autoscalingOptions)
@@ -572,8 +620,8 @@ func main() {
 
 	leaderElection := defaultLeaderElectionConfiguration()
 	leaderElection.LeaderElect = true
-	componentopts.BindLeaderElectionFlags(&leaderElection, pflag.CommandLine)
 
+	componentopts.BindLeaderElectionFlags(&leaderElection, pflag.CommandLine)
 	featureGate := utilfeature.DefaultMutableFeatureGate
 	loggingConfig := logsapi.NewLoggingConfiguration()
 
