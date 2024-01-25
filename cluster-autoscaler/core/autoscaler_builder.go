@@ -127,6 +127,7 @@ func (b *AutoscalerBuilderImpl) Build() (Autoscaler, errors.AutoscalerError) {
 		if err == nil {
 			b.ExpanderStrategy = expanderStrategy
 		}
+		b.Processors = ca_processors.DefaultProcessors(options)
 
 	}
 
