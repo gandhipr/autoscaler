@@ -37,6 +37,11 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/utils/errors"
 )
 
+const (
+	// MaxKubernetesEmptyNodeDeletionTime is the maximum time needed by Kubernetes to delete an empty node.
+	MaxKubernetesEmptyNodeDeletionTime = 3 * time.Minute
+)
+
 // NodeDeletionBatcher batch scale down candidates for one node group and remove them.
 type NodeDeletionBatcher struct {
 	sync.Mutex
@@ -168,7 +173,7 @@ func nodeScaleDownReason(node *apiv1.Node, drain bool) metrics.NodeScaleDownReas
 // IsNodeBeingDeleted returns true iff a given node is being deleted.
 func IsNodeBeingDeleted(ac *context.AutoscalingContext, node *apiv1.Node, timestamp time.Time) bool {
 	deleteTime, _ := taints.GetToBeDeletedTime(node)
-	return deleteTime != nil && (timestamp.Sub(*deleteTime) < ac.MaxCloudProviderNodeDeletionTime || timestamp.Sub(*deleteTime) < ac.MaxKubernetesEmptyNodeDeletionTime)
+	return deleteTime != nil && (timestamp.Sub(*deleteTime) < ac.MaxCloudProviderNodeDeletionTime || timestamp.Sub(*deleteTime) < MaxKubernetesEmptyNodeDeletionTime)
 }
 
 // CleanUpAndRecordFailedScaleDownEvent record failed scale down event and log an error.
