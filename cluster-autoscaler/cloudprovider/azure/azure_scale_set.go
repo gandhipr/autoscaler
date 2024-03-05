@@ -127,7 +127,8 @@ func (scaleSet *ScaleSet) Autoprovisioned() bool {
 
 // GetOptions returns NodeGroupAutoscalingOptions that should be used for this particular
 // NodeGroup. Returning a nil will result in using default options.
-func (scaleSet *ScaleSet) GetOptions(defaults config.NodeGroupAutoscalingOptions) (*config.NodeGroupAutoscalingOptions, error) {
+func (scaleSet *ScaleSet) GetOptions(defaults config.NodeGroupAutoscalingOptions) (
+	*config.NodeGroupAutoscalingOptions, error) {
 	template, err := scaleSet.getVMSSFromCache()
 	if err != nil {
 		return nil, err
@@ -186,18 +187,26 @@ func (scaleSet *ScaleSet) GetScaleSetSize() (int64, error) {
 	return scaleSet.getCurSize()
 }
 
-func (scaleSet *ScaleSet) waitForDeleteInstances(future *azure.Future, requiredIds *compute.VirtualMachineScaleSetVMInstanceRequiredIDs) {
+func (scaleSet *ScaleSet) waitForDeleteInstances(future *azure.Future,
+	requiredIds *compute.VirtualMachineScaleSetVMInstanceRequiredIDs) {
 	ctx, cancel := getContextWithCancel()
 	defer cancel()
 
-	klog.V(3).Infof("Calling virtualMachineScaleSetsClient.WaitForDeleteInstancesResult(%v) for %s", requiredIds.InstanceIds, scaleSet.Name)
-	httpResponse, err := scaleSet.manager.azClient.virtualMachineScaleSetsClient.WaitForDeleteInstancesResult(ctx, future, scaleSet.manager.config.ResourceGroup)
+	klog.V(3).Infof("Calling virtualMachineScaleSetsClient.WaitForDeleteInstancesResult(%v) for %s",
+		requiredIds.InstanceIds, scaleSet.Name)
+	httpResponse, err := scaleSet.manager.azClient.virtualMachineScaleSetsClient.WaitForDeleteInstancesResult(
+		ctx, future, scaleSet.manager.config.ResourceGroup)
+	if httpResponse != nil && httpResponse.Body != nil {
+		defer httpResponse.Body.Close()
+	}
 	isSuccess, err := isSuccessHTTPResponse(httpResponse, err)
 	if isSuccess {
-		klog.V(3).Infof("virtualMachineScaleSetsClient.WaitForDeleteInstancesResult(%v) for %s success", requiredIds.InstanceIds, scaleSet.Name)
+		klog.V(3).Infof("virtualMachineScaleSetsClient.WaitForDeleteInstancesResult(%v) for %s success",
+			requiredIds.InstanceIds, scaleSet.Name)
 		return
 	}
-	klog.Errorf("virtualMachineScaleSetsClient.WaitForDeleteInstancesResult - DeleteInstances for instances %v for %s failed with error: %v", requiredIds.InstanceIds, scaleSet.Name, err)
+	klog.Errorf("virtualMachineScaleSetsClient.WaitForDeleteInstancesResult - DeleteInstances for instances %v for %s failed"+
+		" with error: %v", requiredIds.InstanceIds, scaleSet.Name, err)
 }
 
 // updateVMSSCapacity invokes virtualMachineScaleSetsClient to update the capacity for VMSS.
@@ -206,7 +215,8 @@ func (scaleSet *ScaleSet) updateVMSSCapacity(future *azure.Future) {
 
 	defer func() {
 		if err != nil {
-			klog.Errorf("Failed to update the capacity for vmss %s with error %v, invalidate the cache so as to get the real size from API", scaleSet.Name, err)
+			klog.Errorf("Failed to update the capacity for vmss %s with error %v, invalidate the cache"+
+				" so as to get the real size from API", scaleSet.Name, err)
 			// Invalidate the VMSS size cache in order to fetch the size from the API.
 			scaleSet.invalidateLastSizeRefreshWithLock()
 			scaleSet.manager.invalidateCache()
@@ -217,7 +227,11 @@ func (scaleSet *ScaleSet) updateVMSSCapacity(future *azure.Future) {
 	defer cancel()
 
 	klog.V(3).Infof("Calling virtualMachineScaleSetsClient.WaitForCreateOrUpdateResult(%s)", scaleSet.Name)
-	httpResponse, err := scaleSet.manager.azClient.virtualMachineScaleSetsClient.WaitForCreateOrUpdateResult(ctx, future, scaleSet.manager.config.ResourceGroup)
+	httpResponse, err := scaleSet.manager.azClient.virtualMachineScaleSetsClient.WaitForCreateOrUpdateResult(ctx,
+		future, scaleSet.manager.config.ResourceGroup)
+	if httpResponse != nil && httpResponse.Body != nil {
+		defer httpResponse.Body.Close()
+	}
 
 	isSuccess, err := isSuccessHTTPResponse(httpResponse, err)
 	if isSuccess {
@@ -226,7 +240,9 @@ func (scaleSet *ScaleSet) updateVMSSCapacity(future *azure.Future) {
 		return
 	}
 
-	klog.Errorf("virtualMachineScaleSetsClient.WaitForCreateOrUpdateResult - updateVMSSCapacity for scale set %q failed: %v", scaleSet.Name, err)
+	klog.Errorf("virtualMachineScaleSetsClient.WaitForCreateOrUpdateResult - updateVMSSCapacity for scale set"+
+		" %q failed: %v",
+		scaleSet.Name, err)
 }
 
 // SetScaleSetSize sets ScaleSet size.
@@ -254,7 +270,8 @@ func (scaleSet *ScaleSet) SetScaleSetSize(size int64) error {
 	ctx, cancel := getContextWithTimeout(vmssContextTimeout)
 	defer cancel()
 	klog.V(3).Infof("Waiting for virtualMachineScaleSetsClient.CreateOrUpdateAsync(%s)", scaleSet.Name)
-	future, rerr := scaleSet.manager.azClient.virtualMachineScaleSetsClient.CreateOrUpdateAsync(ctx, scaleSet.manager.config.ResourceGroup, scaleSet.Name, op)
+	future, rerr := scaleSet.manager.azClient.virtualMachineScaleSetsClient.CreateOrUpdateAsync(ctx,
+		scaleSet.manager.config.ResourceGroup, scaleSet.Name, op)
 	if rerr != nil {
 		klog.Errorf("virtualMachineScaleSetsClient.CreateOrUpdate for scale set %q failed: %v", scaleSet.Name, rerr)
 		return rerr.Error()
@@ -304,7 +321,8 @@ func (scaleSet *ScaleSet) GetScaleSetVms() ([]compute.VirtualMachineScaleSetVM, 
 	defer cancel()
 
 	resourceGroup := scaleSet.manager.config.ResourceGroup
-	vmList, rerr := scaleSet.manager.azClient.virtualMachineScaleSetVMsClient.List(ctx, resourceGroup, scaleSet.Name, "instanceView")
+	vmList, rerr := scaleSet.manager.azClient.virtualMachineScaleSetVMsClient.List(ctx, resourceGroup,
+		scaleSet.Name, "instanceView")
 	klog.V(4).Infof("GetScaleSetVms: scaleSet.Name: %s, vmList: %v", scaleSet.Name, vmList)
 	if rerr != nil {
 		klog.Errorf("VirtualMachineScaleSetVMsClient.List failed for %s: %v", scaleSet.Name, rerr)
@@ -400,7 +418,8 @@ func (scaleSet *ScaleSet) DeleteInstances(instances []*azureRef, hasUnregistered
 			return fmt.Errorf("cannot delete instance (%s) which don't belong to the same Scale Set (%q)", instance.Name, commonAsg)
 		}
 
-		if cpi, found := scaleSet.getInstanceByProviderID(instance.Name); found && cpi.Status != nil && cpi.Status.State == cloudprovider.InstanceDeleting {
+		if cpi, found := scaleSet.getInstanceByProviderID(instance.Name); found && cpi.Status != nil &&
+			cpi.Status.State == cloudprovider.InstanceDeleting {
 			klog.V(3).Infof("Skipping deleting instance %s as its current state is deleting", instance.Name)
 			continue
 		}
@@ -433,10 +452,12 @@ func (scaleSet *ScaleSet) DeleteInstances(instances []*azureRef, hasUnregistered
 
 	scaleSet.instanceMutex.Lock()
 	klog.V(3).Infof("Calling virtualMachineScaleSetsClient.DeleteInstancesAsync(%v)", requiredIds.InstanceIds)
-	future, rerr := scaleSet.manager.azClient.virtualMachineScaleSetsClient.DeleteInstancesAsync(ctx, resourceGroup, commonAsg.Id(), *requiredIds, false)
+	future, rerr := scaleSet.manager.azClient.virtualMachineScaleSetsClient.DeleteInstancesAsync(ctx,
+		resourceGroup, commonAsg.Id(), *requiredIds, false)
 	scaleSet.instanceMutex.Unlock()
 	if rerr != nil {
-		klog.Errorf("virtualMachineScaleSetsClient.DeleteInstancesAsync for instances %v failed: %v", requiredIds.InstanceIds, rerr)
+		klog.Errorf("virtualMachineScaleSetsClient.DeleteInstancesAsync for "+
+			"instances %v failed: %v", requiredIds.InstanceIds, rerr)
 		return rerr.Error()
 	}
 
@@ -452,7 +473,8 @@ func (scaleSet *ScaleSet) DeleteInstances(instances []*azureRef, hasUnregistered
 
 	// Proactively set the status of the instances to be deleted in cache
 	for _, instance := range instancesToDelete {
-		scaleSet.setInstanceStatusByProviderID(instance.Name, cloudprovider.InstanceStatus{State: cloudprovider.InstanceDeleting})
+		scaleSet.setInstanceStatusByProviderID(instance.Name,
+			cloudprovider.InstanceStatus{State: cloudprovider.InstanceDeleting})
 	}
 
 	go scaleSet.waitForDeleteInstances(future, requiredIds)
@@ -513,7 +535,7 @@ func (scaleSet *ScaleSet) TemplateNodeInfo() (*schedulerframework.NodeInfo, erro
 		return nil, err
 	}
 
-	node, err := buildNodeFromTemplate(scaleSet.Name, template, scaleSet.manager)
+	node, err := buildNodeFromTemplate(scaleSet.Name, &template, scaleSet.manager)
 	if err != nil {
 		return nil, err
 	}
@@ -558,7 +580,6 @@ func (scaleSet *ScaleSet) Nodes() ([]cloudprovider.Instance, error) {
 		if err != nil {
 			return nil, err
 		}
-
 	} else if orchestrationMode == compute.Flexible {
 		if scaleSet.manager.config.EnableVmssFlex {
 			err := scaleSet.buildScaleSetCacheForFlex(lastRefresh)
@@ -566,11 +587,11 @@ func (scaleSet *ScaleSet) Nodes() ([]cloudprovider.Instance, error) {
 				return nil, err
 			}
 		} else {
-			return nil, fmt.Errorf("vmss - %q with Flexible orchestration detected but 'enableVmssFlex' feature flag is turned off", scaleSet.Name)
+			return nil, fmt.Errorf("vmss - %q with Flexible orchestration detected but 'enableVmssFlex' "+
+				"feature flag is turned off", scaleSet.Name)
 		}
-
 	} else {
-		return nil, fmt.Errorf("Failed to determine orchestration mode for vmss %q", scaleSet.Name)
+		return nil, fmt.Errorf("failed to determine orchestration mode for vmss %q", scaleSet.Name)
 	}
 
 	klog.V(4).Infof("Nodes: returns")
@@ -640,9 +661,9 @@ func buildInstanceCache(vmList interface{}) []cloudprovider.Instance {
 	return instances
 }
 
-func addInstanceToCache(instances *[]cloudprovider.Instance, id *string, provisioningState *string, powerState string) {
+func addInstanceToCache(instances *[]cloudprovider.Instance, id, provisioningState *string, powerState string) {
 	// The resource ID is empty string, which indicates the instance may be in deleting state.
-	if len(*id) == 0 {
+	if *id == "" {
 		return
 	}
 
@@ -654,7 +675,7 @@ func addInstanceToCache(instances *[]cloudprovider.Instance, id *string, provisi
 	}
 
 	*instances = append(*instances, cloudprovider.Instance{
-		Id:     "azure://" + resourceID,
+		Id:     azurePrefix + resourceID,
 		Status: instanceStatusFromProvisioningStateAndPowerState(resourceID, provisioningState, powerState),
 	})
 }
@@ -682,13 +703,15 @@ func (scaleSet *ScaleSet) setInstanceStatusByProviderID(providerID string, statu
 	scaleSet.lastInstanceRefresh = time.Now()
 }
 
-// instanceStatusFromProvisioningStateAndPowerState converts the VM provisioning state and power state to cloudprovider.InstanceStatus
-func instanceStatusFromProvisioningStateAndPowerState(resourceId string, provisioningState *string, powerState string) *cloudprovider.InstanceStatus {
+// instanceStatusFromProvisioningStateAndPowerState converts the VM provisioning state and
+// power state to cloudprovider.InstanceStatus
+func instanceStatusFromProvisioningStateAndPowerState(resourceID string, provisioningState *string,
+	powerState string) *cloudprovider.InstanceStatus {
 	if provisioningState == nil {
 		return nil
 	}
 
-	klog.V(5).Infof("Getting vm instance provisioning state %s for %s", *provisioningState, resourceId)
+	klog.V(5).Infof("Getting vm instance provisioning state %s for %s", *provisioningState, resourceID)
 
 	status := &cloudprovider.InstanceStatus{}
 	switch *provisioningState {
@@ -701,8 +724,8 @@ func instanceStatusFromProvisioningStateAndPowerState(resourceId string, provisi
 		// Per https://learn.microsoft.com/en-us/azure/virtual-machines/states-billing#provisioning-states,
 		// ProvisioningState represents the most recent provisioning state, therefore only report
 		// InstanceCreating errors when the power state indicates the instance has not yet started running
-		if !isRunningVmPowerState(powerState) {
-			klog.V(4).Infof("VM %s reports failed provisioning state with non-running power state: %s", resourceId, powerState)
+		if !isRunningVMPowerState(powerState) {
+			klog.V(4).Infof("VM %s reports failed provisioning state with non-running power state: %s", resourceID, powerState)
 			status.State = cloudprovider.InstanceCreating
 			status.ErrorInfo = &cloudprovider.InstanceErrorInfo{
 				ErrorClass:   cloudprovider.OutOfResourcesErrorClass,
@@ -710,7 +733,7 @@ func instanceStatusFromProvisioningStateAndPowerState(resourceId string, provisi
 				ErrorMessage: "Azure failed to provision a node for this node group",
 			}
 		} else {
-			klog.V(5).Infof("VM %s reports a failed provisioning state but is running (%s)", resourceId, powerState)
+			klog.V(5).Infof("VM %s reports a failed provisioning state but is running (%s)", resourceID, powerState)
 			status.State = cloudprovider.InstanceRunning
 		}
 	default:

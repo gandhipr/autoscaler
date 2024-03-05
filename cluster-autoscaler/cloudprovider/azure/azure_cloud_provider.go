@@ -51,7 +51,8 @@ type AzureCloudProvider struct {
 }
 
 // BuildAzureCloudProvider creates new AzureCloudProvider
-func BuildAzureCloudProvider(azureManager *AzureManager, resourceLimiter *cloudprovider.ResourceLimiter) (cloudprovider.CloudProvider, error) {
+func BuildAzureCloudProvider(azureManager *AzureManager, resourceLimiter *cloudprovider.ResourceLimiter) (
+	cloudprovider.CloudProvider, error) {
 	azure := &AzureCloudProvider{
 		azureManager:    azureManager,
 		resourceLimiter: resourceLimiter,
@@ -85,7 +86,6 @@ func (azure *AzureCloudProvider) GetAvailableGPUTypes() map[string]struct{} {
 // any GPUs, it returns nil.
 func (azure *AzureCloudProvider) GetNodeGpuConfig(node *apiv1.Node) *cloudprovider.GpuConfig {
 	return gpu.GetNodeGPUFromCloudProvider(azure, node)
-
 }
 
 // NodeGroups returns all node groups configured for this cloud provider.
@@ -107,7 +107,7 @@ func (azure *AzureCloudProvider) NodeGroupForNode(node *apiv1.Node) (cloudprovid
 		return nil, nil
 	}
 
-	if !strings.HasPrefix(node.Spec.ProviderID, "azure://") {
+	if !strings.HasPrefix(node.Spec.ProviderID, azurePrefix) {
 		klog.V(6).Infof("Wrong azure ProviderID for node %v, skipped", node.Name)
 		return nil, nil
 	}
@@ -170,20 +170,21 @@ func (m *azureRef) String() string {
 }
 
 // BuildAzure builds Azure cloud provider, manager etc.
-func BuildAzure(opts config.AutoscalingOptions, do cloudprovider.NodeGroupDiscoveryOptions, rl *cloudprovider.ResourceLimiter) cloudprovider.CloudProvider {
-	var config io.ReadCloser
+func BuildAzure(opts config.AutoscalingOptions, do cloudprovider.NodeGroupDiscoveryOptions,
+	rl *cloudprovider.ResourceLimiter) cloudprovider.CloudProvider {
+	var cfg io.ReadCloser
 	if opts.CloudConfig != "" {
 		klog.Infof("Creating Azure Manager using cloud-config file: %v", opts.CloudConfig)
 		var err error
-		config, err = os.Open(opts.CloudConfig)
+		cfg, err = os.Open(opts.CloudConfig)
 		if err != nil {
 			klog.Fatalf("Couldn't open cloud provider configuration %s: %#v", opts.CloudConfig, err)
 		}
-		defer config.Close()
+		defer cfg.Close()
 	} else {
 		klog.Info("Creating Azure Manager with default configuration.")
 	}
-	manager, err := CreateAzureManager(config, do)
+	manager, err := CreateAzureManager(cfg, do)
 	if err != nil {
 		klog.Fatalf("Failed to create Azure Manager: %v", err)
 	}

@@ -38,16 +38,17 @@ const (
 	azureDiskTopologyKey string = "topology.disk.csi.azure.com/zone"
 )
 
-func buildInstanceOS(template compute.VirtualMachineScaleSet) string {
+func buildInstanceOS(template *compute.VirtualMachineScaleSet) string {
 	instanceOS := cloudprovider.DefaultOS
-	if template.VirtualMachineProfile != nil && template.VirtualMachineProfile.OsProfile != nil && template.VirtualMachineProfile.OsProfile.WindowsConfiguration != nil {
+	if template != nil && template.VirtualMachineProfile != nil && template.VirtualMachineProfile.OsProfile != nil &&
+		template.VirtualMachineProfile.OsProfile.WindowsConfiguration != nil {
 		instanceOS = "windows"
 	}
 
 	return instanceOS
 }
 
-func buildGenericLabels(template compute.VirtualMachineScaleSet, nodeName string) map[string]string {
+func buildGenericLabels(template *compute.VirtualMachineScaleSet, nodeName string) map[string]string {
 	result := make(map[string]string)
 
 	result[apiv1.LabelArchStable] = cloudprovider.DefaultArch
@@ -62,8 +63,8 @@ func buildGenericLabels(template compute.VirtualMachineScaleSet, nodeName string
 			failureDomains[k] = strings.ToLower(*template.Location) + "-" + v
 		}
 
-		result[apiv1.LabelTopologyZone] = strings.Join(failureDomains[:], cloudvolume.LabelMultiZoneDelimiter)
-		result[azureDiskTopologyKey] = strings.Join(failureDomains[:], cloudvolume.LabelMultiZoneDelimiter)
+		result[apiv1.LabelTopologyZone] = strings.Join(failureDomains, cloudvolume.LabelMultiZoneDelimiter)
+		result[azureDiskTopologyKey] = strings.Join(failureDomains, cloudvolume.LabelMultiZoneDelimiter)
 	} else {
 		result[apiv1.LabelTopologyZone] = "0"
 		result[azureDiskTopologyKey] = ""
@@ -73,7 +74,11 @@ func buildGenericLabels(template compute.VirtualMachineScaleSet, nodeName string
 	return result
 }
 
-func buildNodeFromTemplate(scaleSetName string, template compute.VirtualMachineScaleSet, manager *AzureManager) (*apiv1.Node, error) {
+func buildNodeFromTemplate(scaleSetName string, template *compute.VirtualMachineScaleSet, manager *AzureManager) (*apiv1.Node, error) {
+	if template == nil {
+		return nil, fmt.Errorf("cannot build node from a nil template")
+	}
+
 	node := apiv1.Node{}
 	nodeName := fmt.Sprintf("%s-asg-%d", scaleSetName, rand.Int63())
 
@@ -87,36 +92,15 @@ func buildNodeFromTemplate(scaleSetName string, template compute.VirtualMachineS
 		Capacity: apiv1.ResourceList{},
 	}
 
-	var vcpu, gpuCount, memoryMb int64
+	// fetch vmssType information
+	vmssType, err := getVMSSType(template, manager.azureCache, manager.config.EnableDynamicInstanceList)
+	if err != nil {
+		return nil, err
+	}
 
-	// Fetching SKU information from SKU API if enableDynamicInstanceList is true.
-	var dynamicErr error
-	if manager.config.EnableDynamicInstanceList {
-		var vmssTypeDynamic InstanceType
-		klog.V(1).Infof("Fetching instance information for SKU: %s from SKU API", *template.Sku.Name)
-		vmssTypeDynamic, dynamicErr = GetVMSSTypeDynamically(template, manager.azureCache)
-		if dynamicErr == nil {
-			vcpu = vmssTypeDynamic.VCPU
-			gpuCount = vmssTypeDynamic.GPU
-			memoryMb = vmssTypeDynamic.MemoryMb
-		} else {
-			klog.Errorf("Dynamically fetching of instance information from SKU api failed with error: %v", dynamicErr)
-		}
-	}
-	if !manager.config.EnableDynamicInstanceList || dynamicErr != nil {
-		klog.V(1).Infof("Falling back to static SKU list for SKU: %s", *template.Sku.Name)
-		// fall-back on static list of vmss if dynamic workflow fails.
-		vmssTypeStatic, staticErr := GetVMSSTypeStatically(template)
-		if staticErr == nil {
-			vcpu = vmssTypeStatic.VCPU
-			gpuCount = vmssTypeStatic.GPU
-			memoryMb = vmssTypeStatic.MemoryMb
-		} else {
-			// return error if neither of the workflows results with vmss data.
-			klog.V(1).Infof("Instance type %q not supported, err: %v", *template.Sku.Name, staticErr)
-			return nil, staticErr
-		}
-	}
+	vcpu := vmssType.VCPU
+	gpuCount := vmssType.GPU
+	memoryMB := vmssType.MemoryMb
 
 	node.Status.Capacity[apiv1.ResourcePods] = *resource.NewQuantity(110, resource.DecimalSI)
 	node.Status.Capacity[apiv1.ResourceCPU] = *resource.NewQuantity(vcpu, resource.DecimalSI)
@@ -126,7 +110,7 @@ func buildNodeFromTemplate(scaleSetName string, template compute.VirtualMachineS
 		node.Status.Capacity[gpu.ResourceNvidiaGPU] = *resource.NewQuantity(gpuCount, resource.DecimalSI)
 	}
 
-	node.Status.Capacity[apiv1.ResourceMemory] = *resource.NewQuantity(memoryMb*1024*1024, resource.DecimalSI)
+	node.Status.Capacity[apiv1.ResourceMemory] = *resource.NewQuantity(memoryMB*1024*1024, resource.DecimalSI)
 
 	resourcesFromTags := extractAllocatableResourcesFromScaleSet(template.Tags)
 	for resourceName, val := range resourcesFromTags {
@@ -144,7 +128,6 @@ func buildNodeFromTemplate(scaleSetName string, template compute.VirtualMachineS
 			} else {
 				node.Labels[k] = ""
 			}
-
 		}
 	}
 
@@ -158,6 +141,37 @@ func buildNodeFromTemplate(scaleSetName string, template compute.VirtualMachineS
 
 	node.Status.Conditions = cloudprovider.BuildReadyConditions()
 	return &node, nil
+}
+
+func getVMSSType(template *compute.VirtualMachineScaleSet, azCache *azureCache,
+	enableDynamicInstanceList bool) (*InstanceType, error) {
+	var dynamicErr error
+
+	// Fetching SKU information from SKU API enableDynamicInstanceList is true.
+	if enableDynamicInstanceList {
+		var vmssTypeDynamic InstanceType
+		klog.V(1).Infof("Fetching instance information for SKU: %s from SKU API", *template.Sku.Name)
+		vmssTypeDynamic, dynamicErr = GetVMSSTypeDynamically(template, azCache)
+		if dynamicErr == nil {
+			return &vmssTypeDynamic, nil
+		}
+		klog.Errorf("Dynamically fetching of instance information from SKU api failed with error: %v", dynamicErr)
+	}
+
+	// Access static list if there is error from dynamic flow or if enableDynamicInstanceList is disabled.
+	var vmssTypeStatic *InstanceType
+	var staticErr error
+	if !enableDynamicInstanceList || dynamicErr != nil {
+		klog.V(1).Infof("Falling back to static SKU list for SKU: %s", *template.Sku.Name)
+		// fall-back on static list of vmss if dynamic workflow fails.
+		vmssTypeStatic, staticErr = GetVMSSTypeStatically(template)
+		if staticErr == nil {
+			return vmssTypeStatic, nil
+		}
+	}
+	// return error if none of the workflows results with vmss data.
+	klog.V(1).Infof("Instance type %q not supported, err: %v", *template.Sku.Name, staticErr)
+	return nil, staticErr
 }
 
 func extractLabelsFromScaleSet(tags map[string]*string) map[string]string {
@@ -182,7 +196,7 @@ func extractTaintsFromScaleSet(tags map[string]*string) []apiv1.Taint {
 
 	for tagName, tagValue := range tags {
 		// The tag value must be in the format <tag>:NoSchedule
-		r, _ := regexp.Compile("(.*):(?:NoSchedule|NoExecute|PreferNoSchedule)")
+		r := regexp.MustCompile("(.*):(?:NoSchedule|NoExecute|PreferNoSchedule)")
 
 		if r.MatchString(*tagValue) {
 			splits := strings.Split(tagName, nodeTaintTagName)

@@ -28,7 +28,7 @@ import (
 
 // GetVMSSTypeStatically uses static list of vmss generated at azure_instance_types.go to fetch vmss instance information.
 // It is declared as a variable for testing purpose.
-var GetVMSSTypeStatically = func(template compute.VirtualMachineScaleSet) (*InstanceType, error) {
+var GetVMSSTypeStatically = func(template *compute.VirtualMachineScaleSet) (*InstanceType, error) {
 	var vmssType *InstanceType
 
 	for k := range InstanceTypes {
@@ -60,7 +60,7 @@ var GetVMSSTypeStatically = func(template compute.VirtualMachineScaleSet) (*Inst
 
 // GetVMSSTypeDynamically fetched vmss instance information using sku api calls.
 // It is declared as a variable for testing purpose.
-var GetVMSSTypeDynamically = func(template compute.VirtualMachineScaleSet, azCache *azureCache) (InstanceType, error) {
+var GetVMSSTypeDynamically = func(template *compute.VirtualMachineScaleSet, azCache *azureCache) (InstanceType, error) {
 	ctx := context.Background()
 	var vmssType InstanceType
 
@@ -83,7 +83,7 @@ var GetVMSSTypeDynamically = func(template compute.VirtualMachineScaleSet, azCac
 		klog.V(1).Infof("Failed to parse vcpu from sku %q %v", *template.Sku.Name, err)
 		return vmssType, err
 	}
-	gpu, err := getGpuFromSku(sku)
+	gpu, err := getGpuFromSku(&sku)
 	if err != nil {
 		klog.V(1).Infof("Failed to parse gpu from sku %q %v", *template.Sku.Name, err)
 		return vmssType, err

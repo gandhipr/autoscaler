@@ -60,7 +60,8 @@ type azureCache struct {
 	skus                 map[string]*skewer.Cache
 }
 
-func newAzureCache(client *azClient, cacheTTL time.Duration, resourceGroup, vmType string, enableDynamicInstanceList bool, defaultLocation string) (*azureCache, error) {
+func newAzureCache(client *azClient, cacheTTL time.Duration, resourceGroup, vmType string,
+	enableDynamicInstanceList bool, defaultLocation string) *azureCache {
 	cache := &azureCache{
 		interrupt:            make(chan struct{}),
 		azClient:             client,
@@ -84,7 +85,7 @@ func newAzureCache(client *azClient, cacheTTL time.Duration, resourceGroup, vmTy
 		klog.Errorf("Error while regenerating Azure cache: %v", err)
 	}
 
-	return cache, nil
+	return cache
 }
 
 func (m *azureCache) getVirtualMachines() map[string][]compute.VirtualMachine {
@@ -239,17 +240,18 @@ func (m *azureCache) Register(nodeGroup cloudprovider.NodeGroup) bool {
 	defer m.mutex.Unlock()
 
 	for i := range m.registeredNodeGroups {
-		if existing := m.registeredNodeGroups[i]; strings.EqualFold(existing.Id(), nodeGroup.Id()) {
-			if existing.MinSize() == nodeGroup.MinSize() && existing.MaxSize() == nodeGroup.MaxSize() {
-				// Node group is already registered and min/max size haven't changed, no action required.
-				return false
-			}
-
-			m.registeredNodeGroups[i] = nodeGroup
-			klog.V(4).Infof("Node group %q updated", nodeGroup.Id())
-			m.invalidateUnownedInstanceCache()
-			return true
+		existing := m.registeredNodeGroups[i]
+		if existing != nil && !strings.EqualFold(existing.Id(), nodeGroup.Id()) {
+			continue
 		}
+		if existing.MinSize() == nodeGroup.MinSize() && existing.MaxSize() == nodeGroup.MaxSize() {
+			// Node group is already registered and min/max size haven't changed, no action required.
+			return false
+		}
+		m.registeredNodeGroups[i] = nodeGroup
+		klog.V(4).Infof("Node group %q updated", nodeGroup.Id())
+		m.invalidateUnownedInstanceCache()
+		return true
 	}
 
 	klog.V(4).Infof("Registering Node Group %q", nodeGroup.Id())
@@ -343,7 +345,7 @@ func (m *azureCache) FindForInstance(instance *azureRef, vmType string) (cloudpr
 	if vmType == vmTypeVMSS {
 		if m.areAllScaleSetsUniform() {
 			// Omit virtual machines not managed by vmss only in case of uniform scale set.
-			if ok := virtualMachineRE.Match([]byte(inst.Name)); ok {
+			if ok := virtualMachineRE.MatchString(inst.Name); ok {
 				klog.V(3).Infof("Instance %q is not managed by vmss, omit it in autoscaler", instance.Name)
 				m.unownedInstances[inst] = true
 				return nil, nil
@@ -353,7 +355,7 @@ func (m *azureCache) FindForInstance(instance *azureRef, vmType string) (cloudpr
 
 	if vmType == vmTypeStandard {
 		// Omit virtual machines with providerID not in Azure resource ID format.
-		if ok := virtualMachineRE.Match([]byte(inst.Name)); !ok {
+		if ok := virtualMachineRE.MatchString(inst.Name); !ok {
 			klog.V(3).Infof("Instance %q is not in Azure resource ID format, omit it in autoscaler", instance.Name)
 			m.unownedInstances[inst] = true
 			return nil, nil

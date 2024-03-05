@@ -19,7 +19,6 @@ package azure
 import (
 	"github.com/Azure/skewer"
 	"github.com/pkg/errors"
-	"strings"
 )
 
 var (
@@ -77,16 +76,8 @@ var (
 	}
 )
 
-// isNvidiaEnabledSKU determines if an VM SKU has nvidia driver support.
-func isNvidiaEnabledSKU(vmSize string) bool {
-	// Trim the optional _Promo suffix.
-	vmSize = strings.ToLower(vmSize)
-	vmSize = strings.TrimSuffix(vmSize, "_promo")
-	return NvidiaEnabledSKUs[vmSize]
-}
-
 // getGpuFromSku extracts gpu information from vmss sku.
-func getGpuFromSku(sku skewer.SKU) (int64, error) {
+func getGpuFromSku(sku *skewer.SKU) (int64, error) {
 	errCapabilityValueNil := &skewer.ErrCapabilityValueNil{}
 	errCapabilityNotFound := &skewer.ErrCapabilityNotFound{}
 

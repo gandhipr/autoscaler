@@ -34,17 +34,21 @@ import (
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
 	azStorage "github.com/Azure/azure-sdk-for-go/storage"
 	"github.com/Azure/go-autorest/autorest"
+	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/Azure/go-autorest/autorest/to"
 
 	"golang.org/x/crypto/pkcs12"
 
 	"k8s.io/autoscaler/cluster-autoscaler/version"
 	klog "k8s.io/klog/v2"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/diskclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/interfaceclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/storageaccountclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
 )
 
 const (
-	//Field names
+	// Field names
 	customDataFieldName      = "customData"
 	dependsOnFieldName       = "dependsOn"
 	hardwareProfileFieldName = "hardwareProfile"
@@ -67,13 +71,13 @@ const (
 	nsgID = "nsgID"
 	rtID  = "routeTableID"
 
-	k8sLinuxVMNamingFormat         = "^[0-9a-zA-Z]{3}-(.+)-([0-9a-fA-F]{8})-{0,2}([0-9]+)$"
+	k8sLinuxVMNamingFormat         = "^[0-9a-zA-Z]{3}-(.+)-([0-9a-fA-F]{8})-{0,2}(\\d+)$"
 	k8sLinuxVMAgentPoolNameIndex   = 1
 	k8sLinuxVMAgentClusterIDIndex  = 2
 	k8sLinuxVMAgentIndexArrayIndex = 3
 
-	k8sWindowsOldVMNamingFormat            = "^([a-fA-F0-9]{5})([0-9a-zA-Z]{3})([9])([a-zA-Z0-9]{3,5})$"
-	k8sWindowsVMNamingFormat               = "^([a-fA-F0-9]{4})([0-9a-zA-Z]{3})([0-9]{3,8})$"
+	k8sWindowsOldVMNamingFormat            = "^([a-fA-F0-9]{5})([0-9a-zA-Z]{3})(9)([a-zA-Z0-9]{3,5})$"
+	k8sWindowsVMNamingFormat               = "^([a-fA-F0-9]{4})([0-9a-zA-Z]{3})(\\d{3,8})$"
 	k8sWindowsVMAgentPoolPrefixIndex       = 1
 	k8sWindowsVMAgentOrchestratorNameIndex = 2
 	k8sWindowsVMAgentPoolInfoIndex         = 3
@@ -108,31 +112,8 @@ type AzUtil struct {
 	manager *AzureManager
 }
 
-// DeleteBlob deletes the blob using the storage client.
-func (util *AzUtil) DeleteBlob(accountName, vhdContainer, vhdBlob string) error {
-	ctx, cancel := getContextWithCancel()
-	defer cancel()
-
-	storageKeysResult, rerr := util.manager.azClient.storageAccountsClient.ListKeys(ctx, util.manager.config.SubscriptionID, util.manager.config.ResourceGroup, accountName)
-	if rerr != nil {
-		return rerr.Error()
-	}
-
-	keys := *storageKeysResult.Keys
-	client, err := azStorage.NewBasicClientOnSovereignCloud(accountName, to.String(keys[0].Value), util.manager.env)
-	if err != nil {
-		return err
-	}
-
-	bs := client.GetBlobService()
-	containerRef := bs.GetContainerReference(vhdContainer)
-	blobRef := containerRef.GetBlobReference(vhdBlob)
-
-	return blobRef.Delete(&azStorage.DeleteBlobOptions{})
-}
-
 // DeleteVirtualMachine deletes a VM and any associated OS disk
-func (util *AzUtil) DeleteVirtualMachine(rg string, name string) error {
+func (util *AzUtil) DeleteVirtualMachine(rg, name string) error {
 	ctx, cancel := getContextWithCancel()
 	defer cancel()
 
@@ -180,51 +161,99 @@ func (util *AzUtil) DeleteVirtualMachine(rg string, name string) error {
 	}
 	klog.V(2).Infof("VirtualMachine %s/%s removed", rg, name)
 
+	if deleteNicErr := deleteNic(util.manager.azClient.interfacesClient, nicName, util.manager.config.ResourceGroup); deleteNicErr != nil {
+		return deleteNicErr
+	}
+
+	if vhd != nil {
+		return deleteVhdBlob(util.manager.azClient.storageAccountsClient, vhd, util.manager.env, util.manager.config.ResourceGroup,
+			util.manager.config.SubscriptionID)
+	} else if managedDisk != nil {
+		return deleteManagedDisk(util.manager.azClient.disksClient, managedDisk, osDiskName, name, util.manager.config.ResourceGroup,
+			util.manager.config.SubscriptionID)
+	}
+	return nil
+}
+
+func deleteNic(interfacesClient interfaceclient.Interface, nicName, resourceGroup string) error {
 	if len(nicName) > 0 {
-		klog.Infof("deleting nic: %s/%s", rg, nicName)
+		klog.Infof("deleting nic: %s/%s", resourceGroup, nicName)
 		interfaceCtx, interfaceCancel := getContextWithCancel()
 		defer interfaceCancel()
-		klog.Infof("waiting for nic deletion: %s/%s", rg, nicName)
-		nicErr := util.manager.azClient.interfacesClient.Delete(interfaceCtx, rg, nicName)
-		_, realErr := checkResourceExistsFromRetryError(nicErr)
+		rerr := interfacesClient.Delete(interfaceCtx, resourceGroup, nicName)
+		klog.Infof("waiting for nic deletion: %s/%s", resourceGroup, nicName)
+		_, realErr := checkResourceExistsFromRetryError(rerr)
 		if realErr != nil {
 			return realErr
 		}
-		klog.V(2).Infof("interface %s/%s removed", rg, nicName)
+		klog.V(2).Infof("interface %s/%s removed", resourceGroup, nicName)
 	}
+	return nil
+}
 
+func deleteVhdBlob(storageAccountsClient storageaccountclient.Interface, vhd *compute.VirtualHardDisk, env *azure.Environment,
+	resourceGroup, subscriptionID string) error {
 	if vhd != nil {
 		accountName, vhdContainer, vhdBlob, err := splitBlobURI(*vhd.URI)
 		if err != nil {
 			return err
 		}
-
 		klog.Infof("found os disk storage reference: %s %s %s", accountName, vhdContainer, vhdBlob)
 
 		klog.Infof("deleting blob: %s/%s", vhdContainer, vhdBlob)
-		if err = util.DeleteBlob(accountName, vhdContainer, vhdBlob); err != nil {
-			_, realErr := checkResourceExistsFromError(err)
-			if realErr != nil {
-				return realErr
-			}
-			klog.V(2).Infof("Blob %s/%s removed", rg, vhdBlob)
+		err = deleteBlobCommon(storageAccountsClient, accountName, vhdContainer, vhdBlob, resourceGroup, subscriptionID, env)
+		realErr := checkResourceExistsFromError(err)
+		if realErr != nil {
+			return realErr
 		}
-	} else if managedDisk != nil {
+		klog.V(2).Infof("Blob %s/%s removed", resourceGroup, vhdBlob)
+	}
+	return nil
+}
+
+func deleteBlobCommon(storageAccountsClient storageaccountclient.Interface, accountName, vhdContainer, vhdBlob, resourceGroup,
+	subscriptionID string, env *azure.Environment) error {
+	ctx, cancel := getContextWithCancel()
+	defer cancel()
+
+	storageKeysResult, rerr := storageAccountsClient.ListKeys(ctx, subscriptionID, resourceGroup, accountName)
+	if rerr != nil {
+		return rerr.Error()
+	}
+
+	if env == nil {
+		return fmt.Errorf("env cannot be nil while creating new basic client")
+	}
+	keys := *storageKeysResult.Keys
+	client, err := azStorage.NewBasicClientOnSovereignCloud(accountName, to.String(keys[0].Value), *env)
+	if err != nil {
+		return err
+	}
+
+	bs := client.GetBlobService()
+	containerRef := bs.GetContainerReference(vhdContainer)
+	blobRef := containerRef.GetBlobReference(vhdBlob)
+
+	return blobRef.Delete(&azStorage.DeleteBlobOptions{})
+}
+
+func deleteManagedDisk(diskClient diskclient.Interface, managedDisk *compute.ManagedDiskParameters, osDiskName *string,
+	vmName, resourceGroup, subscriptionID string) error {
+	if managedDisk != nil {
 		if osDiskName == nil {
-			klog.Warningf("osDisk is not set for VM %s/%s", rg, name)
+			klog.Warningf("osDisk is not set for VM %s/%s", resourceGroup, vmName)
 		} else {
-			klog.Infof("deleting managed disk: %s/%s", rg, *osDiskName)
+			klog.Infof("deleting managed disk: %s/%s", resourceGroup, *osDiskName)
 			disksCtx, disksCancel := getContextWithCancel()
 			defer disksCancel()
-			diskErr := util.manager.azClient.disksClient.Delete(disksCtx, util.manager.config.SubscriptionID, rg, *osDiskName)
+			diskErr := diskClient.Delete(disksCtx, subscriptionID, resourceGroup, *osDiskName)
 			_, realErr := checkResourceExistsFromRetryError(diskErr)
 			if realErr != nil {
 				return realErr
 			}
-			klog.V(2).Infof("disk %s/%s removed", rg, *osDiskName)
+			klog.V(2).Infof("disk %s/%s removed", resourceGroup, *osDiskName)
 		}
 	}
-
 	return nil
 }
 
@@ -333,7 +362,7 @@ func removeIndexesFromArray(array []interface{}, indexes []int) []interface{} {
 func normalizeMasterResourcesForScaling(templateMap map[string]interface{}) error {
 	resources := templateMap[resourcesFieldName].([]interface{})
 	indexesToRemove := []int{}
-	//update master nodes resources
+	// update master nodes resources
 	for index, resource := range resources {
 		resourceMap, ok := resource.(map[string]interface{})
 		if !ok {
@@ -417,10 +446,10 @@ func removeImageReference(resourceProperties map[string]interface{}) bool {
 }
 
 // resourceName returns the last segment (the resource name) for the specified resource identifier.
-func resourceName(ID string) (string, error) {
-	parts := strings.Split(ID, "/")
+func resourceName(id string) (string, error) {
+	parts := strings.Split(id, "/")
 	name := parts[len(parts)-1]
-	if len(name) == 0 {
+	if name == "" {
 		return "", fmt.Errorf("resource name was missing from identifier")
 	}
 
@@ -428,17 +457,17 @@ func resourceName(ID string) (string, error) {
 }
 
 // splitBlobURI returns a decomposed blob URI parts: accountName, containerName, blobName.
-func splitBlobURI(URI string) (string, string, string, error) {
-	uri, err := url.Parse(URI)
+func splitBlobURI(uri string) (accountName, containerName, blobPath string, err error) {
+	uriParsed, err := url.Parse(uri)
 	if err != nil {
 		return "", "", "", err
 	}
 
-	accountName := strings.Split(uri.Host, ".")[0]
-	urlParts := strings.Split(uri.Path, "/")
+	accountName = strings.Split(uriParsed.Host, ".")[0]
+	urlParts := strings.Split(uriParsed.Path, "/")
 
-	containerName := urlParts[1]
-	blobPath := strings.Join(urlParts[2:], "/")
+	containerName = urlParts[1]
+	blobPath = strings.Join(urlParts[2:], "/")
 
 	return accountName, containerName, blobPath, nil
 }
@@ -460,7 +489,7 @@ func k8sLinuxVMNameParts(vmName string) (poolIdentifier, nameSuffix string, agen
 }
 
 // windowsVMNameParts returns parts of Windows VM name
-func windowsVMNameParts(vmName string) (poolPrefix string, orch string, poolIndex int, agentIndex int, err error) {
+func windowsVMNameParts(vmName string) (poolPrefix, orch string, poolIndex, agentIndex int, err error) {
 	var poolInfo string
 	vmNameParts := oldvmnameWindowsRegexp.FindStringSubmatch(vmName)
 	if len(vmNameParts) != 5 {
@@ -508,11 +537,11 @@ func GetVMNameIndex(osType compute.OperatingSystemTypes, vmName string) (int, er
 }
 
 // getLastSegment gets the last segment (splitting by '/'.)
-func getLastSegment(ID string) (string, error) {
-	parts := strings.Split(strings.TrimSpace(ID), "/")
+func getLastSegment(id string) (string, error) {
+	parts := strings.Split(strings.TrimSpace(id), "/")
 	name := parts[len(parts)-1]
-	if len(name) == 0 {
-		return "", fmt.Errorf("identifier '/' not found in resource name %q", ID)
+	if name == "" {
+		return "", fmt.Errorf("identifier '/' not found in resource name %q", id)
 	}
 
 	return name, nil
@@ -550,18 +579,18 @@ func getContextWithTimeout(timeout time.Duration) (context.Context, context.Canc
 // checkExistsFromError inspects an error and returns a true if err is nil,
 // false if error is an autorest.Error with StatusCode=404 and will return the
 // error back if error is another status code or another type of error.
-func checkResourceExistsFromError(err error) (bool, error) {
+func checkResourceExistsFromError(err error) error {
 	if err == nil {
-		return true, nil
+		return nil
 	}
 	v, ok := err.(autorest.DetailedError)
 	if !ok {
-		return false, err
+		return err
 	}
 	if v.StatusCode == http.StatusNotFound {
-		return false, nil
+		return nil
 	}
-	return false, v
+	return v
 }
 
 func checkResourceExistsFromRetryError(err *retry.Error) (bool, error) {
@@ -619,11 +648,11 @@ func isAzureRequestsThrottled(rerr *retry.Error) bool {
 	return rerr.HTTPStatusCode == http.StatusTooManyRequests
 }
 
-func isRunningVmPowerState(powerState string) bool {
+func isRunningVMPowerState(powerState string) bool {
 	return powerState == vmPowerStateRunning || powerState == vmPowerStateStarting
 }
 
-func isKnownVmPowerState(powerState string) bool {
+func isKnownVMPowerState(powerState string) bool {
 	knownPowerStates := map[string]bool{
 		vmPowerStateStarting:     true,
 		vmPowerStateRunning:      true,
@@ -638,7 +667,7 @@ func isKnownVmPowerState(powerState string) bool {
 
 func vmPowerStateFromStatuses(statuses []compute.InstanceViewStatus) string {
 	for _, status := range statuses {
-		if status.Code == nil || !isKnownVmPowerState(*status.Code) {
+		if status.Code == nil || !isKnownVMPowerState(*status.Code) {
 			continue
 		}
 		return *status.Code

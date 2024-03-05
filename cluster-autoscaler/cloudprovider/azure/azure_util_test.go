@@ -36,7 +36,8 @@ func TestSplitBlobURI(t *testing.T) {
 	expectedAccountName := "vhdstorage8h8pjybi9hbsl6"
 	expectedContainerName := "vhds"
 	expectedBlobPath := "osdisks/disk1234.vhd"
-	accountName, containerName, blobPath, err := splitBlobURI("https://vhdstorage8h8pjybi9hbsl6.blob.core.windows.net/vhds/osdisks/disk1234.vhd")
+	accountName, containerName, blobPath, err := splitBlobURI("https://vhdstorage8h8pjybi9hbsl6.blob.core.windows.net/" +
+		"vhds/osdisks/disk1234.vhd")
 	if accountName != expectedAccountName {
 		t.Fatalf("incorrect account name. expected=%s actual=%s", expectedAccountName, accountName)
 	}
@@ -215,40 +216,48 @@ func TestConvertResourceGroupNameToLower(t *testing.T) {
 		},
 		{
 			desc:        "providerID not in Azure format should report error",
-			resourceID:  "azure://invalid-id",
+			resourceID:  azurePrefix + "invalid-id",
 			expectError: true,
 		},
 		{
-			desc:       "resource group name in VM providerID should be converted",
-			resourceID: "azure:///subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/myResourceGroupName/providers/Microsoft.Compute/virtualMachines/k8s-agent-AAAAAAAA-0",
-			expected:   "azure:///subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/myresourcegroupname/providers/Microsoft.Compute/virtualMachines/k8s-agent-AAAAAAAA-0",
+			desc: "resource group name in VM providerID should be converted",
+			resourceID: azurePrefix + "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/myResourceGroupName/providers/" +
+				"Microsoft.Compute/virtualMachines/k8s-agent-AAAAAAAA-0",
+			expected: azurePrefix + "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/myresourcegroupname/providers/" +
+				"Microsoft.Compute/virtualMachines/k8s-agent-AAAAAAAA-0",
 		},
 		{
-			desc:       "resource group name in VM resourceID should be converted",
-			resourceID: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/myResourceGroupName/providers/Microsoft.Compute/virtualMachines/k8s-agent-AAAAAAAA-0",
-			expected:   "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/myresourcegroupname/providers/Microsoft.Compute/virtualMachines/k8s-agent-AAAAAAAA-0",
+			desc: "resource group name in VM resourceID should be converted",
+			resourceID: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/myResourceGroupName/providers/" +
+				"Microsoft.Compute/virtualMachines/k8s-agent-AAAAAAAA-0",
+			expected: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/myresourcegroupname/providers/" +
+				"Microsoft.Compute/virtualMachines/k8s-agent-AAAAAAAA-0",
 		},
 		{
-			desc:       "resource group name in VMSS providerID should be converted",
-			resourceID: "azure:///subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/myResourceGroupName/providers/Microsoft.Compute/virtualMachineScaleSets/myScaleSetName/virtualMachines/156",
-			expected:   "azure:///subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/myresourcegroupname/providers/Microsoft.Compute/virtualMachineScaleSets/myScaleSetName/virtualMachines/156",
+			desc: "resource group name in VMSS providerID should be converted",
+			resourceID: azurePrefix + "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/myResourceGroupName/providers/" +
+				"Microsoft.Compute/virtualMachineScaleSets/myScaleSetName/virtualMachines/156",
+			expected: azurePrefix + "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/myresourcegroupname/providers/" +
+				"Microsoft.Compute/virtualMachineScaleSets/myScaleSetName/virtualMachines/156",
 		},
 		{
-			desc:       "resource group name in VMSS resourceID should be converted",
-			resourceID: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/myResourceGroupName/providers/Microsoft.Compute/virtualMachineScaleSets/myScaleSetName/virtualMachines/156",
-			expected:   "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/myresourcegroupname/providers/Microsoft.Compute/virtualMachineScaleSets/myScaleSetName/virtualMachines/156",
+			desc: "resource group name in VMSS resourceID should be converted",
+			resourceID: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/myResourceGroupName/providers/" +
+				"Microsoft.Compute/virtualMachineScaleSets/myScaleSetName/virtualMachines/156",
+			expected: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/myresourcegroupname/providers/" +
+				"Microsoft.Compute/virtualMachineScaleSets/myScaleSetName/virtualMachines/156",
 		},
 	}
 
 	for _, test := range tests {
-		real, err := convertResourceGroupNameToLower(test.resourceID)
+		lowerStr, err := convertResourceGroupNameToLower(test.resourceID)
 		if test.expectError {
 			assert.NotNil(t, err, test.desc)
 			continue
 		}
 
 		assert.Nil(t, err, test.desc)
-		assert.Equal(t, test.expected, real, test.desc)
+		assert.Equal(t, test.expected, lowerStr, test.desc)
 	}
 }
 
@@ -286,8 +295,8 @@ func TestIsAzureRequestsThrottled(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		real := isAzureRequestsThrottled(test.rerr)
-		assert.Equal(t, test.expected, real, test.desc)
+		isThrottled := isAzureRequestsThrottled(test.rerr)
+		assert.Equal(t, test.expected, isThrottled, test.desc)
 	}
 }
 

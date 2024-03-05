@@ -72,11 +72,11 @@ type CloudProviderRateLimitConfig struct {
 
 	// Rate limit config for each clients. Values would override default settings above.
 	InterfaceRateLimit              *azclients.RateLimitConfig `json:"interfaceRateLimit,omitempty" yaml:"interfaceRateLimit,omitempty"`
-	VirtualMachineRateLimit         *azclients.RateLimitConfig `json:"virtualMachineRateLimit,omitempty" yaml:"virtualMachineRateLimit,omitempty"`
-	StorageAccountRateLimit         *azclients.RateLimitConfig `json:"storageAccountRateLimit,omitempty" yaml:"storageAccountRateLimit,omitempty"`
+	VirtualMachineRateLimit         *azclients.RateLimitConfig `json:"virtualMachineRateLimit,omitempty" yaml:"virtualMachineRateLimit,omitempty"` //nolint:lll
+	StorageAccountRateLimit         *azclients.RateLimitConfig `json:"storageAccountRateLimit,omitempty" yaml:"storageAccountRateLimit,omitempty"` //nolint:lll
 	DiskRateLimit                   *azclients.RateLimitConfig `json:"diskRateLimit,omitempty" yaml:"diskRateLimit,omitempty"`
-	VirtualMachineScaleSetRateLimit *azclients.RateLimitConfig `json:"virtualMachineScaleSetRateLimit,omitempty" yaml:"virtualMachineScaleSetRateLimit,omitempty"`
-	KubernetesServiceRateLimit      *azclients.RateLimitConfig `json:"kubernetesServiceRateLimit,omitempty" yaml:"kubernetesServiceRateLimit,omitempty"`
+	VirtualMachineScaleSetRateLimit *azclients.RateLimitConfig `json:"virtualMachineScaleSetRateLimit,omitempty" yaml:"virtualMachineScaleSetRateLimit,omitempty"` //nolint:lll
+	KubernetesServiceRateLimit      *azclients.RateLimitConfig `json:"kubernetesServiceRateLimit,omitempty" yaml:"kubernetesServiceRateLimit,omitempty"`           //nolint:lll
 }
 
 // Config holds the configuration parsed from the --cloud-config flag
@@ -138,6 +138,10 @@ type Config struct {
 }
 
 // BuildAzureConfig returns a Config object for the Azure clients
+// Below exception should be [nolint: funlen,gocyclo] but because of issue - https://github.com/golangci/golangci-lint/pull/3002,
+// workaround is to use nolint:all
+//
+//nolint:all
 func BuildAzureConfig(configReader io.Reader) (*Config, error) {
 	var err error
 	cfg := &Config{}
@@ -156,12 +160,12 @@ func BuildAzureConfig(configReader io.Reader) (*Config, error) {
 		cfg.Location = os.Getenv("LOCATION")
 		cfg.ResourceGroup = os.Getenv("ARM_RESOURCE_GROUP")
 		cfg.TenantID = os.Getenv("ARM_TENANT_ID")
-		if tenantId := os.Getenv("AZURE_TENANT_ID"); tenantId != "" {
-			cfg.TenantID = tenantId
+		if tenantID := os.Getenv("AZURE_TENANT_ID"); tenantID != "" {
+			cfg.TenantID = tenantID
 		}
 		cfg.AADClientID = os.Getenv("ARM_CLIENT_ID")
-		if clientId := os.Getenv("AZURE_CLIENT_ID"); clientId != "" {
-			cfg.AADClientID = clientId
+		if clientID := os.Getenv("AZURE_CLIENT_ID"); clientID != "" {
+			cfg.AADClientID = clientID
 		}
 		cfg.AADFederatedTokenFile = os.Getenv("AZURE_FEDERATED_TOKEN_FILE")
 		cfg.AADClientSecret = os.Getenv("ARM_CLIENT_SECRET")
@@ -170,7 +174,7 @@ func BuildAzureConfig(configReader io.Reader) (*Config, error) {
 		cfg.AADClientCertPassword = os.Getenv("ARM_CLIENT_CERT_PASSWORD")
 		cfg.Deployment = os.Getenv("ARM_DEPLOYMENT")
 
-		subscriptionID, err := getSubscriptionIdFromInstanceMetadata()
+		subscriptionID, err := getSubscriptionIDFromInstanceMetadata()
 		if err != nil {
 			return nil, err
 		}
@@ -508,14 +512,14 @@ func (cfg *Config) validate() error {
 	}
 
 	if cfg.CloudProviderBackoff && cfg.CloudProviderBackoffRetries == 0 {
-		return fmt.Errorf("Cloud provider backoff is enabled but retries are not set")
+		return fmt.Errorf("cloud provider backoff is enabled but retries are not set")
 	}
 
 	return nil
 }
 
 // getSubscriptionId reads the Subscription ID from the instance metadata.
-func getSubscriptionIdFromInstanceMetadata() (string, error) {
+func getSubscriptionIDFromInstanceMetadata() (string, error) {
 	subscriptionID, present := os.LookupEnv("ARM_SUBSCRIPTION_ID")
 	if !present {
 		metadataService, err := providerazure.NewInstanceMetadataService(imdsServerURL)
